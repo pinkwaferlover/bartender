@@ -202,14 +202,38 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
 @keyframes mud{0%,100%{transform:translateY(-8px)}30%,42%{transform:translateY(8px)}55%{transform:translateY(-4px)}70%,78%{transform:translateY(8px)}}
 .coins{transform-box:fill-box;transform-origin:50% 100%;animation:coin 1.5s var(--e) infinite}
 @keyframes coin{0%,25%,50%,65%,100%{transform:none}32%,42%,72%,78%{transform:scaleY(.55) scaleX(1.08)}}
-.shaker{transform-origin:48px 52px;animation:shk .34s ease-in-out infinite alternate}
-@keyframes shk{from{transform:translate(-8px,7px) rotate(-26deg)}to{transform:translate(8px,-7px) rotate(-14deg)}}
-.cube{animation:cube .34s ease-in-out infinite alternate}.c2{animation-direction:alternate-reverse}
-@keyframes cube{from{transform:translateY(-10px)}to{transform:translateY(6px)}}
-.rattle{animation:rat .34s linear infinite alternate;opacity:.5}
-@keyframes rat{to{opacity:.1}}
-.stirspoon{animation:stir 1.5s linear infinite}
-@keyframes stir{0%{transform:translate(-9px,0)}25%{transform:translate(0,2px)}50%{transform:translate(9px,0)}75%{transform:translate(0,-2px)}100%{transform:translate(-9px,0)}}
+/* shake: the joined tins travel a big arc over the shoulder; the ice slams end to end */
+.shaker{transform-origin:48px 50px;animation:arc .44s cubic-bezier(.45,0,.55,1) infinite alternate}
+@keyframes arc{from{transform:translate(-14px,12px) rotate(-10deg)}to{transform:translate(12px,-12px) rotate(8deg)}}
+.slam{animation:slam .44s cubic-bezier(.7,0,.3,1) infinite alternate}
+@keyframes slam{from{transform:translateX(0)}to{transform:translateX(16px)}}
+/* close the tins: ice drops, the small tin comes in upside-down at an angle, a firm tap seals it */
+.seal-ice{animation:sealice 2.8s var(--e) infinite}
+@keyframes sealice{0%{transform:translateY(-40px);opacity:0}10%{opacity:1}28%,100%{transform:none;opacity:1}}
+.seal-tin{transform-origin:33px 24px;animation:sealtin 2.8s var(--e) infinite}
+@keyframes sealtin{0%,30%{transform:translate(30px,-28px) rotate(24deg);opacity:0}38%{opacity:1}62%{transform:translate(0,-3px) rotate(-6deg)}70%,100%{transform:translate(0,0) rotate(-6deg)}}
+.seal-tap{opacity:0;animation:tap 2.8s linear infinite}
+@keyframes tap{0%,66%{opacity:0}70%,78%{opacity:.8}84%,100%{opacity:0}}
+/* stir: the spoon's back runs round the inside wall, behind the ice then in front; the ice turns as one */
+.spoon-f,.spoon-b{animation:stirpath 1.3s linear infinite}
+@keyframes stirpath{0%{transform:translate(-13px,0)}25%{transform:translate(0,3px)}50%{transform:translate(13px,0)}75%{transform:translate(0,-3px)}100%{transform:translate(-13px,0)}}
+.spoon-f{animation-name:stirpath,front}.spoon-b{animation-name:stirpath,back}
+@keyframes front{0%,49.9%{opacity:1}50%,100%{opacity:0}}
+@keyframes back{0%,49.9%{opacity:0}50%,100%{opacity:1}}
+.icespin{transform-origin:48px 54px;animation:icespin 1.3s linear infinite}
+@keyframes icespin{0%{transform:translate(-2px,0) rotate(-4deg)}50%{transform:translate(2px,0) rotate(4deg)}100%{transform:translate(-2px,0) rotate(-4deg)}}
+/* double strain: in to the cone, it pools, one thin stream out; the glass fills */
+.ds-in{animation:flick .22s linear infinite alternate}
+.pool{transform-box:fill-box;transform-origin:50% 100%;animation:pool 1.1s ease-in-out infinite alternate}
+@keyframes pool{from{transform:scaleY(.35)}to{transform:scaleY(.6)}}
+.ds-out{animation:flick .3s linear infinite alternate}
+.rise{transform-box:fill-box;transform-origin:50% 100%;animation:rise2 3.6s var(--e) infinite}
+@keyframes rise2{0%{transform:scaleY(.08)}85%,100%{transform:scaleY(1)}}
+/* strained from the mixing glass: it tips, a thin stream leaves the spout */
+.tilt{transform-origin:34px 30px;animation:tilt 3.6s var(--e) infinite}
+@keyframes tilt{0%{transform:rotate(22deg)}12%,88%{transform:none}100%{transform:rotate(22deg)}}
+.sg-stream{opacity:0;animation:sgs 3.6s linear infinite}
+@keyframes sgs{0%,12%{opacity:0}15%,84%{opacity:1}88%,100%{opacity:0}}
 .dropice{animation:drop 2.2s cubic-bezier(.55,0,.9,.4) infinite}.dropice.d2{animation-delay:.35s}
 @keyframes drop{0%{transform:translateY(-44px);opacity:0}12%{opacity:1}45%,90%{transform:none;opacity:1}100%{opacity:0}}
 .ds-stream{animation:flick .25s linear infinite alternate}
