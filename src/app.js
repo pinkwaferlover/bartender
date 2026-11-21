@@ -7,7 +7,8 @@ RB.penicillin.steps = [
   ['pour-spirit', 8, '50 ml blended Scotch'],
   ['pour-citrus', 8, '22.5 ml lemon'],
   ['pour-syrup', 8, '20 ml honey syrup'],
-  ['shake', 12, 'Ice in, shake hard'],
+  ['seal', 6, 'Ice in, close the tins'],
+  ['shake', 12, 'Shake hard'],
   ['ice', 5, 'One big rock in the glass'],
   ['double-strain', 10, 'Double strain over the rock'],
   ['float', 8, '7.5 ml Islay over the back of a spoon']
@@ -208,7 +209,7 @@ function mountAZ() {
     const [x, y, a] = pos(n, 26, RR), p = 22 * b; e.style.transform = `translate(${x + p * Math.cos(a) - 28}px,${y + p * Math.sin(a) - 28}px) scale(${1 + 1.9 * b})`;
     e.classList.toggle('hot', ALPHA[n] === letter || d < .5); });
   const buildInner = (L, active) => {
-    inner.forEach(e => e.remove()); inner = [];
+    shown = L; inner.forEach(e => e.remove()); inner = [];
     const ls = byL[L] || []; const N = ls.length;
     ls.forEach((r, n) => { const e = document.createElement('button'); e.className = 'ic' + (active ? ' live' : ''); e.dataset.rid = r.id;
       e.innerHTML = `${glass(r, 84, !can(r))}<span>${esc(r.name)}</span>`; e.style.animationDelay = (active ? n * 45 : 0) + 'ms'; az.appendChild(e); inner.push(e); });
@@ -219,15 +220,16 @@ function mountAZ() {
   const polar = e => { const b = az.getBoundingClientRect(); const x = (e.clientX - b.left) / SCALE - cx, y = (e.clientY - b.top) / SCALE - cy;
     return { d: Math.hypot(x, y), a: ((Math.atan2(y, x) + Math.PI / 2) / (2 * Math.PI) + 1) % 1 }; };
   const nearestL = v => { let best = null, bd = 99; [...ALPHA].forEach((c, n) => { if (!byL[c]) return; let d = Math.abs(n - v); d = Math.min(d, 26 - d); if (d < bd) { bd = d; best = n; } }); return best; };
-  const zone = p => p.d > (RR + R2) / 2 ? 'letters' : (live && p.d > R2 * .45 ? 'drinks' : 'centre');
-  const aim = p => { if (mode === 'letters') { fL = p.a * 26; drawLetters(); const k = Math.round(fL) % 26; if (k !== last) { last = k; if (byL[ALPHA[k]] && ALPHA[k] !== letter) buildInner(ALPHA[k], false); try { navigator.vibrate && navigator.vibrate(4); } catch (_) {} } }
+  const zone = p => p.d > (RR + R2) / 2 ? 'letters' : (inner.length && p.d > R2 * .45 ? 'drinks' : 'centre');
+  let shown = null;
+  const aim = p => { if (mode === 'letters') { fL = p.a * 26; drawLetters(); const k = Math.round(fL) % 26; if (k !== last) { last = k; if (byL[ALPHA[k]] && ALPHA[k] !== shown) buildInner(ALPHA[k], true); try { navigator.vibrate && navigator.vibrate(4); } catch (_) {} } }
     else if (mode === 'drinks' && inner.length > 1) { fD = p.a * inner.length; drawInner(); } };
   drawLetters(); if (letter) buildInner(letter, true);
   az.addEventListener('pointerdown', e => { const p = polar(e); mode = zone(p); if (mode === 'centre') { mode = null; return; } az.setPointerCapture(e.pointerId); aim(p); });
   /* Mouse hover swells letters and cocktails the same way a held finger does; nothing is chosen until a click. */
   const rest = () => { fL = letter ? ALPHA.indexOf(letter) : null; drawLetters(); if (fD != null) { fD = null; drawInner(); } };
   az.addEventListener('pointermove', e => { const p = polar(e); if (mode) return aim(p); if (e.pointerType !== 'mouse') return; const z = zone(p);
-    if (z === 'letters') { fL = p.a * 26; drawLetters(); const k = Math.round(fL) % 26; if (!live && k !== last) { last = k; if (byL[ALPHA[k]]) buildInner(ALPHA[k], false); } if (fD != null) { fD = null; drawInner(); } }
+    if (z === 'letters') { fL = p.a * 26; drawLetters(); const k = Math.round(fL) % 26; if (k !== last) { last = k; if (byL[ALPHA[k]] && ALPHA[k] !== shown) buildInner(ALPHA[k], true); } if (fD != null) { fD = null; drawInner(); } }
     else if (z === 'drinks' && inner.length > 1) { fD = p.a * inner.length; drawInner(); if (fL != null && fL !== ALPHA.indexOf(letter)) { fL = letter ? ALPHA.indexOf(letter) : null; drawLetters(); } }
     else rest(); });
   az.addEventListener('pointerup', e => { const p = polar(e), m = mode; mode = null;
@@ -236,7 +238,7 @@ function mountAZ() {
       if (ls.length === 1) return go('recipe', { rid: ls[0].id }); buildInner(letter, true); drawLetters(); return; }
     if (m === 'drinks') { const t = document.elementFromPoint(e.clientX, e.clientY); const hit = t && t.closest('.ic');
       const k = hit ? inner.indexOf(hit) : (fD == null ? -1 : Math.round(fD) % inner.length); if (k >= 0) { S.taps++; go('recipe', { rid: inner[k].dataset.rid }); } } });
-  az.addEventListener('pointerleave', () => { if (mode) return; if (!live) { inner.forEach(x => x.remove()); inner = []; last = -1; } rest(); });
+  az.addEventListener('pointerleave', () => { if (mode) return; last = -1; if (letter) { if (shown !== letter) buildInner(letter, true); } else { inner.forEach(x => x.remove()); inner = []; shown = null; live = false; } rest(); });
 }
 const SUGQ = [['something smoky', 'Smoky'], ['honey', 'Honey'], ['warm me up', 'Warm'], ['long and fresh', 'Long and fresh'], ['bitter', 'Bitter'], ['after dinner', 'After dinner']];
 function searchR(q) {
@@ -274,8 +276,8 @@ function scrRecipe() {
     if (m) { unit = 'ml'; name = m[1] === 'juice' ? name + ' juice' : m[1] === 'espresso' ? 'Espresso' : m[1] === 'hot' ? 'Hot ' + name.toLowerCase() : name; }
     const right = ok ? '' : sub ? `<span class="swap">→ ${esc(lbl(sub))}</span>` : g.o ? `<span class="opt">optional</span>` : `<span class="need">need</span>`;
     return `<div class="ir${ok || sub ? '' : ' miss'}"><span class="ii">${ingIco(g.k, 34, { ghost: !ok && !sub })}</span><span class="iq">${q}</span><span class="iu">${esc(unit)}</span><span class="in">${esc(name)}</span><span class="ix">${right}</span></div>`; }).join('');
-  const steps = r.steps.map(([a, sec, t], n) => { const timed = a === 'shake' || a === 'stir';
-    return `<div class="step"><div class="sa">${act(a, r.colour)}</div><div class="sn">${n + 1}</div><div class="stx">${esc(t)}</div>${timed ? `<div class="sec">${pie(sec / 30, 18)}<span>${sec} s</span></div>` : ''}</div>`; }).join('');
+  const steps = r.steps.map(([a0, sec, t], n) => { const a = a0 === 'strain' && r.steps.slice(0, n).some(x => x[0] === 'stir') ? 'strain-glass' : a0; const timed = a === 'shake' || a === 'stir';
+    return `<div class="step"><div class="sa">${act(a, r.colour, { glass: r.glass })}</div><div class="sn">${n + 1}</div><div class="stx">${esc(t)}</div>${timed ? `<div class="sec">${pie(sec / 30, 18)}<span>${sec} s</span></div>` : ''}</div>`; }).join('');
   return header('', '', `<button class="storyb${S.story ? ' on' : ''}" data-act="story">${ICON.story}<span>Story</span></button>${dice(30)}`) + `
   <div class="rp">
     <div class="rl"><div class="rg">${glass(r, 250)}</div><h1 class="rn">${esc(r.name)}</h1>
