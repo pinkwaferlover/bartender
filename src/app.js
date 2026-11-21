@@ -215,7 +215,7 @@ function mountAZ() {
     live = active; fD = null; drawInner();
   };
   const drawInner = () => { const N = inner.length; inner.forEach((e, n) => { let d = fD == null ? 99 : Math.abs(n - fD); if (fD != null) d = Math.min(d, N - d); const b = N > 1 ? fish(d, .7) : 0;
-    const [x, y] = N === 1 ? [cx, cy] : pos(n, N, R2); e.style.setProperty('--dx', (cx - x) + 'px'); e.style.setProperty('--dy', (cy - y) + 'px'); e.style.transform = `translate(${x - 60}px,${y - 62}px) scale(${1 + .35 * b})`; e.style.zIndex = 5 + Math.round(b * 5); }); };
+    const [x, y] = N === 1 ? [cx, cy] : pos(n, N, R2); e.style.setProperty('--dx', (cx - x) + 'px'); e.style.setProperty('--dy', (cy - y) + 'px'); e.style.transform = `translate(${x - 60}px,${y - 62}px) scale(${1 + .5 * b})`; e.style.zIndex = 5 + Math.round(b * 5); }); };
   const polar = e => { const b = az.getBoundingClientRect(); const x = (e.clientX - b.left) / SCALE - cx, y = (e.clientY - b.top) / SCALE - cy;
     return { d: Math.hypot(x, y), a: ((Math.atan2(y, x) + Math.PI / 2) / (2 * Math.PI) + 1) % 1 }; };
   const nearestL = v => { let best = null, bd = 99; [...ALPHA].forEach((c, n) => { if (!byL[c]) return; let d = Math.abs(n - v); d = Math.min(d, 26 - d); if (d < bd) { bd = d; best = n; } }); return best; };
@@ -224,15 +224,19 @@ function mountAZ() {
     else if (mode === 'drinks' && inner.length > 1) { fD = p.a * inner.length; drawInner(); } };
   drawLetters(); if (letter) buildInner(letter, true);
   az.addEventListener('pointerdown', e => { const p = polar(e); mode = zone(p); if (mode === 'centre') { mode = null; return; } az.setPointerCapture(e.pointerId); aim(p); });
-  az.addEventListener('pointermove', e => { const p = polar(e); if (mode) return aim(p); if (e.pointerType === 'mouse') { const z = zone(p);
-    if (z === 'drinks' && inner.length > 1) { fD = p.a * inner.length; drawInner(); } else if (fD != null) { fD = null; drawInner(); } } });
+  /* Mouse hover swells letters and cocktails the same way a held finger does; nothing is chosen until a click. */
+  const rest = () => { fL = letter ? ALPHA.indexOf(letter) : null; drawLetters(); if (fD != null) { fD = null; drawInner(); } };
+  az.addEventListener('pointermove', e => { const p = polar(e); if (mode) return aim(p); if (e.pointerType !== 'mouse') return; const z = zone(p);
+    if (z === 'letters') { fL = p.a * 26; drawLetters(); const k = Math.round(fL) % 26; if (!live && k !== last) { last = k; if (byL[ALPHA[k]]) buildInner(ALPHA[k], false); } if (fD != null) { fD = null; drawInner(); } }
+    else if (z === 'drinks' && inner.length > 1) { fD = p.a * inner.length; drawInner(); if (fL != null && fL !== ALPHA.indexOf(letter)) { fL = letter ? ALPHA.indexOf(letter) : null; drawLetters(); } }
+    else rest(); });
   az.addEventListener('pointerup', e => { const p = polar(e), m = mode; mode = null;
     if (!m) { if (zone(p) === 'centre' && live) { letter = S.letter = null; fL = null; inner.forEach(x => x.remove()); inner = []; live = false; drawLetters(); } return; }
     if (m === 'letters') { const n = nearestL(fL); if (n == null) return; S.taps++; letter = S.letter = ALPHA[n]; fL = n; last = -1; const ls = byL[letter];
       if (ls.length === 1) return go('recipe', { rid: ls[0].id }); buildInner(letter, true); drawLetters(); return; }
     if (m === 'drinks') { const t = document.elementFromPoint(e.clientX, e.clientY); const hit = t && t.closest('.ic');
       const k = hit ? inner.indexOf(hit) : (fD == null ? -1 : Math.round(fD) % inner.length); if (k >= 0) { S.taps++; go('recipe', { rid: inner[k].dataset.rid }); } } });
-  az.addEventListener('pointerleave', () => { if (!mode) { if (!letter) { fL = null; drawLetters(); } fD = null; drawInner(); } });
+  az.addEventListener('pointerleave', () => { if (mode) return; if (!live) { inner.forEach(x => x.remove()); inner = []; last = -1; } rest(); });
 }
 const SUGQ = [['something smoky', 'Smoky'], ['honey', 'Honey'], ['warm me up', 'Warm'], ['long and fresh', 'Long and fresh'], ['bitter', 'Bitter'], ['after dinner', 'After dinner']];
 function searchR(q) {
