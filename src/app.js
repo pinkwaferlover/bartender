@@ -168,14 +168,20 @@ function scrHome() {
     <div class="sugwrap" id="sug"><div class="track">${sug.join('')}</div></div>
   </div>`;
 }
+/* By spirit and by feel open the way search does: one row per choice, its drinks previewed. */
+const FILTERS = () => `<div class="filt">${[['all', 'All'], ['now', 'Make now'], ['one', 'One more bottle']].map(([k, t]) => `<button class="fb${S.filter === k ? ' on' : ''}" data-filter="${k}">${t}</button>`).join('')}</div>`;
+const keepF = r => S.filter === 'all' || (S.filter === 'now' ? can(r) : stat(r).miss.length === 1);
+function groupRow(attr, label, icon, list) {
+  const hits = list.filter(keepF).sort((a, b) => can(b) - can(a));
+  return `<button class="sg grp" ${attr}><span class="nm">${icon}<span>${label}</span></span><span class="peek">${hits.slice(0, 4).map(r => glass(r, 46, !can(r))).join('')}</span>
+    <span class="names">${hits.slice(0, 3).map(r => esc(r.name)).join(' · ')}</span><span class="st">${hits.length}</span></button>`;
+}
 function scrSpirits() {
-  const own = Object.keys(SPIRIT).filter(k => R.some(r => r.spirit === k) && (k === 'aperitif' ? R.some(r => r.spirit === k && can(r)) : R.some(r => r.spirit === k && r.ing.some(g => have(g.k) && (ING[g.k] || [])[1] === 'spirit'))));
-  return header('By spirit') + `<div class="big" id="sp"><div class="track">${own.map(k => { const n = R.filter(r => r.spirit === k && can(r)).length;
-    return `<button class="bc" data-spirit="${k}">${spIco(k, 200)}<span class="nm">${SPIRIT[k][0]}</span><span class="cnt">${n}</span></button>`; }).join('')}</div></div>`;
+  const ks = Object.keys(SPIRIT).filter(k => R.some(r => r.spirit === k));
+  return header('By spirit') + FILTERS() + `<div class="res" id="res">${ks.map(k => groupRow(`data-spirit="${k}"`, SPIRIT[k][0], spIco(k, 34), R.filter(r => r.spirit === k))).join('')}</div>`;
 }
 function scrFeels() {
-  return header('By feel') + `<div class="big" id="fl"><div class="track">${Object.keys(FEEL).map(f => { const n = R.filter(r => r.feel === f && can(r)).length;
-    return `<button class="bc" data-feel="${f}">${feelIco(f, 170)}<span class="nm">${FEEL[f][0]}</span><span class="cnt">${n}</span></button>`; }).join('')}</div></div>`;
+  return header('By feel') + FILTERS() + `<div class="res" id="res">${Object.keys(FEEL).map(f => groupRow(`data-feel="${f}"`, FEEL[f][0], feelIco(f, 30), R.filter(r => r.feel === f))).join('')}</div>`;
 }
 function drinksPool() { return R.filter(r => (S.spirit ? r.spirit === S.spirit : true) && (S.feel ? r.feel === S.feel : true) && (S.kind ? r.ing.some(g => g.k === S.kind) : true)); }
 function scrDrinks() {
@@ -187,30 +193,46 @@ function scrDrinks() {
     ${near.length ? `<div class="rowlbl">One bottle more</div><div class="nearrow" id="nr"><div class="track">${near.map(r => miniCard(r, `+ ${esc(lbl(stat(r).miss[0]))}`)).join('')}</div></div>` : ''}`;
 }
 const ALPHA = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-function scrAZ() {
-  return header('A–Z') + `<div class="az" id="az"><div class="azc" id="azc"></div><div class="azl" id="azl"></div></div>`;
-}
+function scrAZ() { return header('A–Z') + `<div class="az" id="az"></div>`; }
+/* Outer ring: letters, swelling under the finger. Lift on a letter and its cocktails pop out of the centre as an inner ring,
+   which swells under the finger the same way. Lift on a cocktail to open it; tap the empty centre to close the inner ring. */
 function mountAZ() {
   const az = document.getElementById('az'); if (!az) return;
   const byL = {}; R.forEach(r => { const k = r.name[0].toUpperCase(); (byL[k] = byL[k] || []).push(r); });
-  const W = az.clientWidth, H = az.clientHeight, cx = W / 2, cy = H / 2 + 4, RR = Math.min(W, H) * .43;
-  const els = [...ALPHA].map((c, n) => { const e = document.createElement('div'); e.className = 'lt' + (byL[c] ? '' : ' none'); e.textContent = c; az.appendChild(e); return e; });
-  const pos = n => { const a = (n / 26) * 2 * Math.PI - Math.PI / 2; return [cx + RR * Math.cos(a), cy + RR * Math.sin(a), a]; };
-  const centre = document.getElementById('azc'), list = document.getElementById('azl');
-  let f = null, down = false, last = -1;
-  const draw = () => { els.forEach((e, n) => { let d = f == null ? 99 : Math.abs(n - f); d = Math.min(d, 26 - d); const b = Math.exp(-(d * d) / (2 * 1.3 * 1.3));
-    const [x, y, a] = pos(n), push = 22 * b; e.style.transform = `translate(${x + push * Math.cos(a) - 28}px,${y + push * Math.sin(a) - 28}px) scale(${1 + 1.9 * b})`; e.classList.toggle('hot', d < .5); }); };
-  const showLetter = L => { centre.innerHTML = L ? `<span class="L">${L}</span><span class="n">${(byL[L] || []).length || ''}</span>` : ''; };
-  const idx = e => { const b = az.getBoundingClientRect(); const a = Math.atan2((e.clientY - b.top) / SCALE - cy, (e.clientX - b.left) / SCALE - cx) + Math.PI / 2; return ((a / (2 * Math.PI)) * 26 + 26) % 26; };
-  const nearest = v => { let best = null, bd = 99; [...ALPHA].forEach((c, n) => { if (!byL[c]) return; let d = Math.abs(n - v); d = Math.min(d, 26 - d); if (d < bd) { bd = d; best = n; } }); return best; };
-  const pick = L => { S.letter = L; const ls = byL[L] || []; if (ls.length === 1) { S.taps++; go('recipe', { rid: ls[0].id }); return; }
-    centre.innerHTML = ''; list.innerHTML = ls.map((r, n) => `<button class="azr" data-rid="${r.id}" style="animation-delay:${n * 50}ms">${glass(r, 54, !can(r))}<span>${esc(r.name)}</span></button>`).join(''); };
-  draw(); if (S.letter) pick(S.letter);
-  az.addEventListener('pointerdown', e => { if (e.target.closest('.azr')) return; down = true; az.setPointerCapture(e.pointerId); list.innerHTML = ''; f = idx(e); draw(); showLetter(ALPHA[Math.round(f) % 26]); });
-  az.addEventListener('pointermove', e => { if (e.target.closest && e.target.closest('.azr') && !down) return; if (!down && e.pointerType !== 'mouse') return; if (!down && list.innerHTML) return;
-    f = idx(e); draw(); const k = Math.round(f) % 26; showLetter(ALPHA[k]); if (k !== last) { last = k; if (down) try { navigator.vibrate && navigator.vibrate(4); } catch (_) {} } });
-  az.addEventListener('pointerleave', () => { if (!down && !list.innerHTML) { f = null; draw(); showLetter(null); } });
-  az.addEventListener('pointerup', () => { if (!down) return; down = false; const n = nearest(f); if (n == null) return; S.taps++; f = n; draw(); pick(ALPHA[n]); });
+  const W = az.clientWidth, H = az.clientHeight, cx = W / 2, cy = H / 2 + 4, RR = Math.min(W, H) * .44, R2 = RR * .56;
+  const els = [...ALPHA].map(c => { const e = document.createElement('div'); e.className = 'lt' + (byL[c] ? '' : ' none'); e.textContent = c; az.appendChild(e); return e; });
+  const pos = (n, N, r) => { const a = (n / N) * 2 * Math.PI - Math.PI / 2; return [cx + r * Math.cos(a), cy + r * Math.sin(a), a]; };
+  const fish = (d, sd) => Math.exp(-(d * d) / (2 * sd * sd));
+  let fL = null, fD = null, mode = null, letter = S.letter, live = false, inner = [], last = -1;
+  const drawLetters = () => els.forEach((e, n) => { let d = fL == null ? 99 : Math.abs(n - fL); if (fL != null) d = Math.min(d, 26 - d); const b = fish(d, 1.3);
+    const [x, y, a] = pos(n, 26, RR), p = 22 * b; e.style.transform = `translate(${x + p * Math.cos(a) - 28}px,${y + p * Math.sin(a) - 28}px) scale(${1 + 1.9 * b})`;
+    e.classList.toggle('hot', ALPHA[n] === letter || d < .5); });
+  const buildInner = (L, active) => {
+    inner.forEach(e => e.remove()); inner = [];
+    const ls = byL[L] || []; const N = ls.length;
+    ls.forEach((r, n) => { const e = document.createElement('button'); e.className = 'ic' + (active ? ' live' : ''); e.dataset.rid = r.id;
+      e.innerHTML = `${glass(r, 84, !can(r))}<span>${esc(r.name)}</span>`; e.style.animationDelay = (active ? n * 45 : 0) + 'ms'; az.appendChild(e); inner.push(e); });
+    live = active; fD = null; drawInner();
+  };
+  const drawInner = () => { const N = inner.length; inner.forEach((e, n) => { let d = fD == null ? 99 : Math.abs(n - fD); if (fD != null) d = Math.min(d, N - d); const b = N > 1 ? fish(d, .7) : 0;
+    const [x, y] = N === 1 ? [cx, cy] : pos(n, N, R2); e.style.setProperty('--dx', (cx - x) + 'px'); e.style.setProperty('--dy', (cy - y) + 'px'); e.style.transform = `translate(${x - 60}px,${y - 62}px) scale(${1 + .35 * b})`; e.style.zIndex = 5 + Math.round(b * 5); }); };
+  const polar = e => { const b = az.getBoundingClientRect(); const x = (e.clientX - b.left) / SCALE - cx, y = (e.clientY - b.top) / SCALE - cy;
+    return { d: Math.hypot(x, y), a: ((Math.atan2(y, x) + Math.PI / 2) / (2 * Math.PI) + 1) % 1 }; };
+  const nearestL = v => { let best = null, bd = 99; [...ALPHA].forEach((c, n) => { if (!byL[c]) return; let d = Math.abs(n - v); d = Math.min(d, 26 - d); if (d < bd) { bd = d; best = n; } }); return best; };
+  const zone = p => p.d > (RR + R2) / 2 ? 'letters' : (live && p.d > R2 * .45 ? 'drinks' : 'centre');
+  const aim = p => { if (mode === 'letters') { fL = p.a * 26; drawLetters(); const k = Math.round(fL) % 26; if (k !== last) { last = k; if (byL[ALPHA[k]] && ALPHA[k] !== letter) buildInner(ALPHA[k], false); try { navigator.vibrate && navigator.vibrate(4); } catch (_) {} } }
+    else if (mode === 'drinks' && inner.length > 1) { fD = p.a * inner.length; drawInner(); } };
+  drawLetters(); if (letter) buildInner(letter, true);
+  az.addEventListener('pointerdown', e => { const p = polar(e); mode = zone(p); if (mode === 'centre') { mode = null; return; } az.setPointerCapture(e.pointerId); aim(p); });
+  az.addEventListener('pointermove', e => { const p = polar(e); if (mode) return aim(p); if (e.pointerType === 'mouse') { const z = zone(p);
+    if (z === 'drinks' && inner.length > 1) { fD = p.a * inner.length; drawInner(); } else if (fD != null) { fD = null; drawInner(); } } });
+  az.addEventListener('pointerup', e => { const p = polar(e), m = mode; mode = null;
+    if (!m) { if (zone(p) === 'centre' && live) { letter = S.letter = null; fL = null; inner.forEach(x => x.remove()); inner = []; live = false; drawLetters(); } return; }
+    if (m === 'letters') { const n = nearestL(fL); if (n == null) return; S.taps++; letter = S.letter = ALPHA[n]; fL = n; last = -1; const ls = byL[letter];
+      if (ls.length === 1) return go('recipe', { rid: ls[0].id }); buildInner(letter, true); drawLetters(); return; }
+    if (m === 'drinks') { const t = document.elementFromPoint(e.clientX, e.clientY); const hit = t && t.closest('.ic');
+      const k = hit ? inner.indexOf(hit) : (fD == null ? -1 : Math.round(fD) % inner.length); if (k >= 0) { S.taps++; go('recipe', { rid: inner[k].dataset.rid }); } } });
+  az.addEventListener('pointerleave', () => { if (!mode) { if (!letter) { fL = null; drawLetters(); } fD = null; drawInner(); } });
 }
 const SUGQ = [['something smoky', 'Smoky'], ['honey', 'Honey'], ['warm me up', 'Warm'], ['long and fresh', 'Long and fresh'], ['bitter', 'Bitter'], ['after dinner', 'After dinner']];
 function searchR(q) {
@@ -225,7 +247,7 @@ function statusCell(r) { const s = stat(r); return s.can ? `<span class="ok">${s
 function resultRow(r) { return `<button class="rr" data-rid="${r.id}">${glass(r, 64, !can(r))}<span class="nm">${esc(r.name)}</span>
   <span class="at">${spIco(r.spirit, 26)}<span>${SPIRIT[r.spirit][0]}</span></span><span class="at">${feelIco(r.feel, 18)}<span>${FEEL[r.feel][0]}</span></span><span class="st">${statusCell(r)}</span></button>`; }
 function scrSearch() {
-  const fl = `<div class="filt">${[['all', 'All'], ['now', 'Make now'], ['one', 'One more bottle']].map(([k, t]) => `<button class="fb${S.filter === k ? ' on' : ''}" data-filter="${k}">${t}</button>`).join('')}</div>`;
+  const fl = FILTERS();
   return `<header class="hd"><button class="ib" data-act="back" aria-label="Back">${ICON.back}</button>${searchBar(true)}</header>${fl}<div class="res" id="res"></div>`;
 }
 function fillSearch() {
@@ -277,8 +299,6 @@ function render() {
   v.dataset.scr = S.scr;
   const tapRid = (i, el) => go('recipe', { rid: el.dataset.rid });
   strip('sug', v.querySelectorAll('#sug .track > *').length, { itemW: 168, gap: 26, align: 'left', pad: 48, lift: 0, onTap: tapRid });
-  strip('sp', v.querySelectorAll('#sp .track > *').length, { itemW: 230, gap: 40, start: 0, onTap: (i, el) => go('drinks', { spirit: el.dataset.spirit, feel: null, kind: null }) });
-  strip('fl', v.querySelectorAll('#fl .track > *').length, { itemW: 210, gap: 30, start: 1, onTap: (i, el) => go('drinks', { feel: el.dataset.feel, spirit: null, kind: null }) });
   const n = v.querySelectorAll('#dl .track > *').length; strip('dl', n, { itemW: 210, gap: 44, lift: .1, start: Math.min(2, Math.floor((n - 1) / 2)), onTap: tapRid });
   strip('nr', v.querySelectorAll('#nr .track > *').length, { itemW: 140, gap: 18, align: 'left', pad: 48, lift: 0, onTap: tapRid });
   const sn = v.querySelectorAll('#stp .track > *').length; if (sn * 196 > 1024 - 80) strip('stp', sn, { itemW: 180, gap: 16, align: 'left', pad: 40, lift: 0 }); else v.querySelector('#stp')?.classList.add('fixed');
@@ -287,7 +307,7 @@ function render() {
   meter();
 }
 document.addEventListener('click', e => {
-  const t = e.target.closest('[data-act],[data-go],[data-rid],[data-kind],[data-filter],[data-q],[data-inv]'); if (!t || t.closest('.track') && !t.matches('.dice')) return;
+  const t = e.target.closest('[data-act],[data-go],[data-rid],[data-kind],[data-filter],[data-q],[data-inv],[data-spirit],[data-feel]'); if (!t || t.closest('.track') && !t.matches('.dice') || t.closest('.az')) return;
   const a = t.dataset.act;
   if (t.matches('.dice')) { e.preventDefault(); S.taps++; surprise(t, S.scr === 'drinks' ? drinksPool() : null); return; }
   if (a === 'back') return back();
@@ -297,8 +317,10 @@ document.addEventListener('click', e => {
     try { const rec = new SR(); rec.lang = 'en-GB'; t.classList.add('on'); rec.onresult = ev => { S.q = [...ev.results].map(x => x[0].transcript).join(''); const qq = document.getElementById('q'); if (qq) qq.value = S.q; fillSearch(); }; rec.onend = () => t.classList.remove('on'); rec.start(); } catch (_) { q && q.focus(); } return; }
   if (t.dataset.go) { S.taps++; return go(t.dataset.go); }
   if (t.dataset.rid) { S.taps++; return go('recipe', { rid: t.dataset.rid }); }
+  if (t.dataset.spirit && t.matches('.grp')) { S.taps++; return go('drinks', { spirit: t.dataset.spirit, feel: null, kind: null }); }
+  if (t.dataset.feel && t.matches('.grp')) { S.taps++; return go('drinks', { feel: t.dataset.feel, spirit: null, kind: null }); }
   if (t.dataset.kind) { S.taps++; S.kind = S.kind === t.dataset.kind ? null : t.dataset.kind; return render(); }
-  if (t.dataset.filter) { S.filter = t.dataset.filter; document.querySelectorAll('.fb').forEach(b => b.classList.toggle('on', b === t)); return fillSearch(); }
+  if (t.dataset.filter) { S.filter = t.dataset.filter; return S.scr === 'search' ? (document.querySelectorAll('.fb').forEach(b => b.classList.toggle('on', b === t)), fillSearch()) : render(); }
   if (t.dataset.q) { S.taps++; S.q = t.dataset.q; document.getElementById('q').value = S.q; return fillSearch(); }
   if (t.dataset.inv) { const k = t.dataset.inv; S.inv.has(k) ? S.inv.delete(k) : S.inv.add(k); try { localStorage.setItem('dion-bar', JSON.stringify([...S.inv])); } catch (_) {} return render(); }
 });
