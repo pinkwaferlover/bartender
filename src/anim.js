@@ -27,16 +27,22 @@ function target(glass, colour, x0 = 0, y0 = 0) {
 }
 
 /* Pour from a bottle into the jigger, then tip the jigger into the tin. */
-function pourTwoStage(bottleFn, colour, cls = '') {
-  return `<g class="p2 ${cls}">
-    <g class="p2-bottle">${bottleFn(colour)}</g>
-    <rect class="p2-stream1" x="37" y="21" width="${cls === 'syrup' ? 4 : 2.4}" height="10" rx="1.2" fill="${colour}"/>
-    <g class="p2-jig"><g transform="translate(38 46)">
-      <clipPath id="jc"><path d="M-9 -16 L9 -16 L2 0 L-2 0 Z"/></clipPath>
-      <rect class="p2-jfill" x="-10" y="-16" width="20" height="16" fill="${colour}" clip-path="url(#jc)"/>
-      ${JIGGER}</g></g>
-    <rect class="p2-stream2" x="58" y="50" width="${cls === 'syrup' ? 4 : 2.4}" height="16" rx="1.2" fill="${colour}"/>
-    ${TIN(56, 40, 48, 30)}
+/* How a bartender measures: the jigger is held level just above the tin's mouth; the bottle tips into
+   its top cup; then a flick of the wrist turns the jigger over about its waist and the measure drops
+   straight into the tin. Syrup runs slower and thicker. */
+const JIG_CUP = 'M-9 -13 L9 -13 L2 0 L-2 0 Z';
+const JIG = `<path d="M-9 -13 L9 -13 L2 0 L9 13 L-9 13 L-2 0 Z" ${LN}/>`;
+const TINFILL = `<clipPath id="tf"><path d="M40 56 L72 56 L68 90 L44 90 Z"/></clipPath><g clip-path="url(#tf)"><rect class="p2-tin" x="38" y="70" width="36" height="22" fill="currentColor" opacity=".55"/></g>`;
+function pourTwoStage(bottleFn, colour, cls = '', bx = 16, by = 36) {
+  const w = cls === 'syrup' ? 3.4 : 2.2;
+  return `<g class="p2 ${cls}" style="color:${colour}">
+    ${TINFILL}${TIN(40, 56, 34, 32)}
+    <rect class="p2-stream2" x="${61 - w / 2}" y="48" width="${w}" height="${cls === 'syrup' ? 18 : 22}" rx="${w / 2}" fill="${colour}"/>
+    <g class="p2-jig"><g transform="translate(50 42)">
+      <clipPath id="jc"><path d="${JIG_CUP}"/></clipPath>
+      <g clip-path="url(#jc)"><rect class="p2-jfill" x="-10" y="-13" width="20" height="13" fill="${colour}"/></g>${JIG}</g></g>
+    <rect class="p2-stream1" x="${47 - w / 2}" y="22" width="${w}" height="9" rx="${w / 2}" fill="${colour}"/>
+    <g class="p2-bottle" style="transform-origin:${bx}px ${by}px"><g transform="translate(${bx} ${by})">${bottleFn(colour)}</g></g>
   </g>`;
 }
 
@@ -45,11 +51,11 @@ function act(a, colour = '#d9a441', o = {}) {
   let b = '';
   const u = ++ACTN, glass = o.glass || 'rocks';
   switch (a) {
-    case 'pour-spirit': b = pourTwoStage(c => `<g transform="translate(12 34)">${WHISKY_BOTTLE(c)}</g>`, colour); break;
-    case 'pour-citrus': b = pourTwoStage(c => `<g transform="translate(12 36)">${SPOUT_BOTTLE(c)}</g>`, '#f2d24a'); break;
-    case 'pour-syrup': b = pourTwoStage(c => `<g transform="translate(14 40)">${JAR(c)}</g>`, '#e0a224', 'syrup'); break;
-    case 'pour': b = `<g class="tip"><g transform="translate(30 30)"><clipPath id="jg"><path d="M-9 -16 L9 -16 L2 0 L-2 0 Z"/></clipPath><rect class="tip-fill" x="-10" y="-16" width="20" height="16" fill="${colour}" clip-path="url(#jg)"/>${JIGGER}</g></g>
-      <rect class="tip-stream" x="47" y="40" width="2.4" height="22" rx="1.2" fill="${colour}"/>${TIN(36, 44, 44, 30)}`; break;
+    case 'pour-spirit': b = pourTwoStage(WHISKY_BOTTLE, colour, '', 18, 34); break;
+    case 'pour-citrus': b = pourTwoStage(SPOUT_BOTTLE, '#f2d24a', '', 16, 36); break;
+    case 'pour-syrup': b = pourTwoStage(SPOUT_BOTTLE, '#e0a224', 'syrup', 16, 36); break;
+    /* A measure already in the jigger, turned over into the tin */
+    case 'pour': b = pourTwoStage(() => '', colour, 'tiponly'); break;
     case 'muddle': b = `${TIN(30, 30, 58, 36)}
       <g class="coins"><ellipse cx="41" cy="82" rx="6" ry="3" fill="#e6c27a"/><ellipse cx="51" cy="83" rx="6" ry="3" fill="#e6c27a"/><ellipse cx="56" cy="79" rx="5" ry="2.6" fill="#d9b060"/></g>
       <g class="muddler"><rect x="44" y="8" width="8" height="58" rx="4" fill="#9a6a3a"/><rect x="42" y="62" width="12" height="10" rx="3" fill="#7d5530"/></g>`; break;

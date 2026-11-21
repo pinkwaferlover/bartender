@@ -181,23 +181,34 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
 
 /* ---- Step animations: the hand's own movement ---- */
 .act *{transform-box:view-box}
-.p2-bottle{transform-origin:12px 34px;animation:p2b 3.4s var(--e) infinite}
-@keyframes p2b{0%,8%{transform:none}18%,38%{transform:rotate(64deg)}48%,100%{transform:none}}
-.p2-stream1{opacity:0;animation:p2s1 3.4s linear infinite}
-@keyframes p2s1{0%,17%{opacity:0}20%,36%{opacity:1}38%,100%{opacity:0}}
-.p2-jfill{transform-box:fill-box;transform-origin:50% 100%;animation:p2f 3.4s var(--e) infinite}
-@keyframes p2f{0%,18%{transform:scaleY(0)}38%,56%{transform:scaleY(1)}72%,100%{transform:scaleY(0)}}
-.p2-jig{transform-origin:47px 30px;animation:p2j 3.4s var(--e) infinite}
-@keyframes p2j{0%,48%{transform:none}58%,74%{transform:rotate(108deg)}86%,100%{transform:none}}
-.p2-stream2{opacity:0;animation:p2s2 3.4s linear infinite}
-@keyframes p2s2{0%,58%{opacity:0}60%,72%{opacity:1}74%,100%{opacity:0}}
-.syrup .p2-bottle,.syrup .p2-stream1,.syrup .p2-jfill,.syrup .p2-jig,.syrup .p2-stream2{animation-duration:4.4s}
-.tip{transform-origin:39px 14px;animation:tip 2.6s var(--e) infinite}
-@keyframes tip{0%,25%{transform:none}45%,68%{transform:rotate(110deg)}85%,100%{transform:none}}
-.tip-fill{transform-box:fill-box;transform-origin:50% 100%;animation:tipf 2.6s var(--e) infinite}
-@keyframes tipf{0%,45%{transform:scaleY(1)}66%,90%{transform:scaleY(0)}100%{transform:scaleY(1)}}
-.tip-stream{opacity:0;animation:tips 2.6s linear infinite}
-@keyframes tips{0%,46%{opacity:0}49%,64%{opacity:1}67%,100%{opacity:0}}
+/* jigger pours: bottle tips into the jigger held over the tin, then a wrist flick turns the jigger over its waist */
+.p2-bottle,.p2-stream1,.p2-jfill,.p2-jig,.p2-stream2,.p2-tin{animation-duration:3.6s;animation-iteration-count:infinite}
+.p2-bottle{animation-name:p2b;animation-timing-function:var(--e)}
+@keyframes p2b{0%,6%{transform:none}18%,40%{transform:rotate(68deg)}50%,100%{transform:none}}
+.p2-stream1{opacity:0;animation-name:p2s1;animation-timing-function:linear}
+@keyframes p2s1{0%,18%{opacity:0}20%,39%{opacity:1}41%,100%{opacity:0}}
+.p2-jfill{transform-box:fill-box;transform-origin:50% 100%;animation-name:p2f;animation-timing-function:ease-in-out}
+@keyframes p2f{0%,19%{transform:scaleY(0)}40%,58%{transform:scaleY(1)}70%,100%{transform:scaleY(0)}}
+.p2-jig{transform-origin:50px 42px;animation-name:p2j;animation-timing-function:var(--e)}
+@keyframes p2j{0%,52%{transform:none}60%,72%{transform:rotate(118deg)}84%,100%{transform:none}}
+.p2-stream2{opacity:0;animation-name:p2s2;animation-timing-function:linear}
+@keyframes p2s2{0%,58%{opacity:0}60%,70%{opacity:1}72%,100%{opacity:0}}
+.p2-tin{transform-box:fill-box;transform-origin:50% 100%;animation-name:p2t;animation-timing-function:ease-out}
+@keyframes p2t{0%,60%{transform:scaleY(.25)}74%,96%{transform:scaleY(.6)}100%{transform:scaleY(.25)}}
+.syrup .p2-bottle,.syrup .p2-stream1,.syrup .p2-jfill,.syrup .p2-jig,.syrup .p2-stream2,.syrup .p2-tin{animation-duration:4.8s}
+.syrup .p2-stream2{animation-name:p2s2syr}
+@keyframes p2s2syr{0%,59%{opacity:0}62%,74%{opacity:1}77%,100%{opacity:0}}
+/* a measure already poured: only the turn of the wrist */
+.tiponly .p2-bottle,.tiponly .p2-stream1{display:none}
+.tiponly .p2-jfill,.tiponly .p2-jig,.tiponly .p2-stream2,.tiponly .p2-tin{animation-duration:2.6s}
+.tiponly .p2-jfill{animation-name:tipf}
+@keyframes tipf{0%,30%{transform:scaleY(1)}62%,85%{transform:scaleY(0)}100%{transform:scaleY(1)}}
+.tiponly .p2-jig{animation-name:tipj}
+@keyframes tipj{0%,22%{transform:none}38%,62%{transform:rotate(118deg)}80%,100%{transform:none}}
+.tiponly .p2-stream2{animation-name:tips2}
+@keyframes tips2{0%,36%{opacity:0}39%,60%{opacity:1}63%,100%{opacity:0}}
+.tiponly .p2-tin{animation-name:tipt}
+@keyframes tipt{0%,38%{transform:scaleY(.25)}62%,92%{transform:scaleY(.6)}100%{transform:scaleY(.25)}}
 .muddler{animation:mud 1.5s var(--e) infinite}
 @keyframes mud{0%,100%{transform:translateY(-8px)}30%,42%{transform:translateY(8px)}55%{transform:translateY(-4px)}70%,78%{transform:translateY(8px)}}
 .coins{transform-box:fill-box;transform-origin:50% 100%;animation:coin 1.5s var(--e) infinite}
