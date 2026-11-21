@@ -1,0 +1,5 @@
+# Your own bar stays on your device. Only the example is public.
+inventory.json
+*.private.json
+photos/
+.DS_Store
