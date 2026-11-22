@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Dionysus · Illustrated</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,700&display=swap">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="stage">
+<svg id="scene" viewBox="420 40 760 200" preserveAspectRatio="xMidYMid slice" role="img" aria-label="Dionysus behind his bar">
+ <defs>
+  <pattern id="dots" width="22" height="22" patternUnits="userSpaceOnUse"><circle cx="11" cy="11" r="2.4" fill="#2a1f19"/></pattern>
+  <pattern id="veins" width="120" height="120" patternUnits="userSpaceOnUse">
+   <path d="M-10 30 C20 20 30 50 60 40 S100 10 130 30 M10 90 C40 80 50 110 80 96 S110 70 130 84 M40 0 C46 30 30 50 44 70" fill="none" stroke="#8d8a86" stroke-width="1.3" opacity=".7"/>
+  </pattern>
+  <filter id="neon" x="-20%" y="-60%" width="140%" height="220%"><feGaussianBlur stdDeviation="7" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+  <clipPath id="liqclip"><rect id="liqrect" x="-60" y="0" width="120" height="0"/></clipPath>
+ </defs>
+
+ <!-- Muted world: wall, arch, rays, columns -->
+ <g id="wall">
+  <rect x="-3000" y="-3000" width="7600" height="7600" fill="#0f0e10"/>
+  <rect x="180" y="-200" width="1240" height="1600" fill="#16110f"/>
+  <rect x="180" y="-200" width="1240" height="1600" fill="url(#dots)" opacity=".55"/>
+  <g id="rays" opacity=".9"></g>
+  <path d="M430 760 V330 A370 370 0 0 1 1170 330 V760 Z" fill="none" stroke="#2c211a" stroke-width="18"/>
+  <g fill="#221914">
+   <rect x="250" y="250" width="70" height="520"/><rect x="236" y="236" width="98" height="22" rx="4"/><circle cx="252" cy="246" r="14"/><circle cx="318" cy="246" r="14"/>
+   <rect x="1280" y="250" width="70" height="520"/><rect x="1266" y="236" width="98" height="22" rx="4"/><circle cx="1282" cy="246" r="14"/><circle cx="1348" cy="246" r="14"/>
+  </g>
+  <g fill="#1b1411"><rect x="266" y="270" width="8" height="490"/><rect x="290" y="270" width="8" height="490"/><rect x="1296" y="270" width="8" height="490"/><rect x="1320" y="270" width="8" height="490"/></g>
+ </g>
+
+ <!-- 1. The neon sign: the tallest thing -->
+ <g id="sign" aria-label="DIONYSUS">
+  <rect x="452" y="58" width="696" height="168" rx="16" fill="#140f0f" stroke="#2c211a" stroke-width="4"/>
+  <line x1="560" y1="-200" x2="560" y2="58" stroke="#2c211a" stroke-width="4"/><line x1="1040" y1="-200" x2="1040" y2="58" stroke="#2c211a" stroke-width="4"/>
+  <text id="signGlow" x="800" y="196" text-anchor="middle" filter="url(#neon)">DIONYSUS</text>
+  <text id="signTube" x="800" y="196" text-anchor="middle">DIONYSUS</text>
+ </g>
+
+ <!-- 3. The shelf under the sign -->
+ <g id="shelf" class="touch" tabindex="0" role="button" aria-label="Your shelf">
+  <rect x="470" y="246" width="660" height="150" fill="transparent"/>
+  <g id="bottles"></g>
+  <rect x="460" y="384" width="680" height="16" rx="3" fill="#3a2719"/>
+  <rect x="460" y="384" width="680" height="4" fill="#5a3f2a"/>
+  <path d="M478 400 l18 26 h10 l-18 -26 Z M1122 400 l-18 26 h-10 l18 -26 Z" fill="#2c1e15"/>
+  <g id="cobweb" stroke="#6e655c" stroke-width="1" fill="none" opacity=".6"><path d="M1130 300 L1080 384 M1130 330 L1060 384 M1130 360 L1100 384 M1090 384 Q1112 352 1130 345 M1072 384 Q1100 330 1130 318"/></g>
+ </g>
+
+ <!-- 2. Dionysus -->
+ <g id="dio" class="touch" transform="translate(800 672)" tabindex="0" role="button" aria-label="Dionysus. Tap for a story">
+  <g id="body">
+   <!-- thyrsus leaning behind him, used as a bar spoon in recipes -->
+   <g id="thyrsusRest"><rect x="150" y="-300" width="7" height="300" rx="3" fill="#7a5530"/><ellipse cx="153.5" cy="-312" rx="13" ry="22" fill="#5b7a2e"/><path d="M142 -318 h23 M141 -306 h25 M143 -296 h21" stroke="#3f5a1f" stroke-width="3"/></g>
+   <path class="hair" d="M-44 -262 Q-50 -205 -26 -190 H26 Q50 -205 44 -262 Z"/>
+   <g id="torso">
+    <path class="skin" d="M-112 4 L-104 -150 Q-100 -184 -60 -191 L-20 -198 H20 L60 -191 Q100 -184 104 -150 L112 4 Z"/>
+    <path class="veins" d="M-112 4 L-104 -150 Q-100 -184 -60 -191 L-20 -198 H20 L60 -191 Q100 -184 104 -150 L112 4 Z"/>
+    <path class="shade" d="M-62 -142 Q-32 -124 -4 -140 M4 -140 Q32 -124 62 -142 M0 -120 V-40" fill="none" stroke-width="3"/>
+    <path class="cov cov-modest chiton" d="M-109 4 L-101 -150 Q-97 -180 -60 -187 Q-30 -168 0 -166 Q30 -168 60 -187 Q97 -180 101 -150 L109 4 Z"/>
+    <path class="cov cov-modest chiton-edge" d="M-60 -187 Q-30 -168 0 -166 Q30 -168 60 -187" fill="none" stroke-width="5"/>
+    <path class="cov cov-classical cov-modest himation" d="M28 -197 Q92 -194 104 -150 L112 4 L-112 4 L-108 -36 Q-26 -66 28 -197 Z"/>
+    <path class="cov cov-classical cov-modest himation-fold" d="M-80 -30 Q-10 -70 40 -170 M-40 0 Q20 -60 70 -150 M20 4 Q60 -60 90 -120" fill="none" stroke-width="3"/>
+    <g class="cov cov-cheeky" id="figleaf"><path d="M0 6 C-30 -6 -36 -26 -22 -30 C-30 -44 -12 -50 -4 -40 C-2 -56 14 -54 12 -40 C24 -50 38 -40 26 -28 C40 -24 30 -4 0 6 Z" fill="#4f7d34"/><path d="M0 4 V-36 M0 -14 L-16 -26 M0 -18 L16 -30" stroke="#35591f" stroke-width="2" fill="none"/></g>
+    <!-- fawn skin (nebris), over his right shoulder -->
+    <path class="fawn" d="M-104 -150 Q-98 -188 -54 -193 L-34 -152 Q-16 -84 44 -24 L26 4 Q-62 -54 -104 -150 Z"/>
+    <g class="fawnspots"><circle cx="-70" cy="-160" r="5"/><circle cx="-52" cy="-130" r="4"/><circle cx="-36" cy="-100" r="5"/><circle cx="-14" cy="-70" r="4"/><circle cx="8" cy="-44" r="5"/><circle cx="-80" cy="-130" r="3.5"/></g>
+    <path d="M-60 -192 l-6 -10 l14 2 Z" class="fawn"/>
+   </g>
+   <rect class="skin" x="-17" y="-226" width="34" height="38"/>
+   <g id="head">
+    <ellipse class="skin" cx="-38" cy="-252" rx="8" ry="12"/><ellipse class="skin" cx="38" cy="-252" rx="8" ry="12"/>
+    <ellipse class="skin" cx="0" cy="-256" rx="38" ry="46"/>
+    <ellipse class="veins" cx="0" cy="-256" rx="38" ry="46"/>
+    <g id="face">
+     <path class="shade" d="M-24 -262 q9 -5 17 0 M7 -262 q9 -5 17 0" fill="none" stroke-width="3.4" stroke-linecap="round"/>
+     <path class="brow" d="M-26 -272 q10 -6 19 -1 M7 -273 q10 -5 19 1" fill="none" stroke-width="3.2" stroke-linecap="round"/>
+     <path class="shade" d="M0 -258 v16 l-5 3" fill="none" stroke-width="2.6" stroke-linecap="round"/>
+     <path class="lip" d="M-11 -228 q11 6 22 0 q-11 4 -22 0 Z"/>
+     <circle class="cheek" cx="-20" cy="-238" r="7"/><circle class="cheek" cx="20" cy="-238" r="7"/>
+    </g>
+    <g class="hair" id="curls"></g>
+    <g id="wreath"></g>
+    <g id="mintsprout"></g>
+   </g>
+   <g id="arms"><path id="armL" class="arm"/><path id="armLv" class="armv"/><path id="armR" class="arm"/><path id="armRv" class="armv"/>
+    <circle id="handL" class="skin" r="15"/><circle id="handR" class="skin" r="15"/></g>
+   <g id="props"></g>
+  </g>
+ </g>
+
+ <!-- The bar counter: muted -->
+ <g id="counter">
+  <rect x="-400" y="658" width="2400" height="16" fill="#3d2a1c"/>
+  <rect x="-400" y="658" width="2400" height="3" fill="#6b4c33"/>
+  <rect x="-400" y="674" width="2400" height="900" fill="#241810"/>
+  <g id="panels" fill="#2b1d14" stroke="#1a110b" stroke-width="3"></g>
+  <rect x="-400" y="700" width="2400" height="22" fill="url(#meander)" opacity=".9"/>
+  <rect x="-400" y="926" width="2400" height="8" fill="#5c4630" opacity=".7"/>
+ </g>
+ <defs><pattern id="meander" width="44" height="22" patternUnits="userSpaceOnUse"><path d="M2 20 V2 H30 V14 H14 V8 H22 M30 20 H42 V2" fill="none" stroke="#4d3a28" stroke-width="3"/></pattern></defs>
+
+ <!-- On the counter -->
+ <g id="passing"></g>
+ <g id="drink" transform="translate(800 666)"></g>
+ <g id="menu" class="touch" tabindex="0" role="button" aria-label="Cocktail menu">
+  <path d="M556 664 L572 560 H648 L664 664 Z" fill="#1f4a3a"/>
+  <path d="M572 560 H648 L640 612 H580 Z" fill="#265a47"/>
+  <rect x="580" y="572" width="60" height="2" fill="#d8b25a"/>
+  <text x="610" y="600" text-anchor="middle" class="menutext">MENU</text>
+  <path d="M590 620 h40 M594 632 h32 M590 644 h40" stroke="#d8b25a" stroke-width="2.4" opacity=".7"/>
+ </g>
+ <g id="panther" class="touch" tabindex="0" role="button" aria-label="The panther. Barman's choice">
+  <path id="ptail" d="M1150 652 C1190 640 1196 600 1176 584 C1170 580 1166 588 1172 594 C1184 606 1176 632 1144 640 Z" fill="#17161c"/>
+  <path d="M1000 664 C996 630 1030 612 1080 612 C1120 612 1156 628 1158 664 Z" fill="#1c1b22"/>
+  <path d="M1040 628 C1070 618 1110 618 1140 636" stroke="#2d2c36" stroke-width="5" fill="none"/>
+  <g id="phead"><path d="M968 640 C962 610 984 590 1008 592 C1032 594 1042 616 1036 640 C1030 656 976 658 968 640 Z" fill="#1c1b22"/>
+   <path d="M976 600 L972 584 L988 594 Z M1022 594 L1036 584 L1032 602 Z" fill="#1c1b22"/>
+   <ellipse cx="990" cy="618" rx="5" ry="3.4" fill="#9be05a"/><ellipse cx="1016" cy="618" rx="5" ry="3.4" fill="#9be05a"/>
+   <path d="M998 632 l5 4 l5 -4 Z" fill="#3a2a2e"/></g>
+  <path id="ppaw" d="M950 664 C944 650 956 640 972 644 C984 648 988 660 984 664 Z" fill="#232229"/>
+  <g id="dice"><rect x="-13" y="-13" width="26" height="26" rx="5" fill="#f3ead6"/><circle cx="-6" cy="-6" r="2.6" fill="#a3172a"/><circle cx="6" cy="6" r="2.6" fill="#a3172a"/><circle cx="0" cy="0" r="2.6" fill="#a3172a"/></g>
+ </g>
+</svg>
+
+<button id="gear" class="hud-btn" aria-label="Look settings"><svg viewBox="0 0 24 24" width="22" height="22"><path d="M12 8.5a3.5 3.5 0 1 0 0 7a3.5 3.5 0 0 0 0-7Zm8.4 4.9l1.6 1.2l-2 3.4l-1.9-.7a7.7 7.7 0 0 1-1.7 1l-.3 2H12h-4l-.3-2a7.7 7.7 0 0 1-1.7-1l-1.9.7l-2-3.4l1.6-1.2a7.6 7.6 0 0 1 0-2l-1.6-1.2l2-3.4l1.9.7a7.7 7.7 0 0 1 1.7-1l.3-2h4h4l.3 2a7.7 7.7 0 0 1 1.7 1l1.9-.7l2 3.4l-1.6 1.2a7.6 7.6 0 0 1 0 2Z" fill="currentColor"/></svg></button>
+<button id="back" class="hud-btn" aria-label="Back to the bar" hidden>← Bar</button>
+<button id="talkBtn" class="pill" hidden>Talk to Dionysus</button>
+
+<div id="bubble" class="bubble" hidden aria-live="polite">
+ <p id="say"></p>
+ <div id="chips" class="chips"></div>
+ <form id="talk" class="talk" hidden>
+  <input id="talkIn" type="text" placeholder="Tell him what you fancy…" autocomplete="off" aria-label="Tell Dionysus what you fancy">
+  <button type="button" id="mic" class="mic" aria-label="Speak to him"><svg viewBox="0 0 24 24" width="20" height="20"><rect x="9" y="3" width="6" height="11" rx="3" fill="currentColor"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21M8.5 21h7" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></svg></button>
+  <button type="submit" class="send">Ask</button>
+ </form>
+ <button id="bubbleX" class="x" aria-label="Close">×</button>
+</div>
+
+<section id="panel" class="panel" hidden></section>
+<section id="settings" class="settings" hidden aria-label="Look settings"></section>
+</div>
+<script src="data.js"></script>
+<script src="stories.js"></script>
+<script src="draw.js"></script>
+<script src="inventory.js"></script>
+<script src="logic.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
