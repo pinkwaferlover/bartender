@@ -374,52 +374,6 @@ M_TWINE = mat('twine', '#a3172a', 0.6)
 M_DIPPER = mat('dipper', '#b98552', 0.5)
 M_IVORY = mat('ivory', '#f3ead6', 0.25, coat=0.6)
 M_PIP = mat('pip', '#b3172a', 0.3)
-M_EYE = mat('eye', '#b8d84a', 0.15, coat=1.0, emit='#a8c83a', emit_strength=0.8)
-M_NOSE = mat('nose', '#3a2a2e', 0.4)
-M_IVY = mat('ivy', '#3f8a34', 0.4)
-
-
-def leopard_material(scale=7.0, name='leopard'):
-    """Gold coat with broken rosettes: rings from a distorted Voronoi, broken up by noise, darker gold inside."""
-    m = bpy.data.materials.new(name); m.use_nodes = True
-    nt = m.node_tree; n = nt.nodes; L = nt.links
-    b = n['Principled BSDF']; b.inputs['Roughness'].default_value = 0.62
-    b.inputs['Sheen Weight'].default_value = 0.6; b.inputs['Sheen Roughness'].default_value = 0.4
-    tc = n.new('ShaderNodeTexCoord')
-    warp = n.new('ShaderNodeTexNoise'); warp.inputs['Scale'].default_value = 3.0; warp.inputs['Detail'].default_value = 2.0
-    L.new(tc.outputs['Object'], warp.inputs['Vector'])
-    mixv = n.new('ShaderNodeMix'); mixv.data_type = 'VECTOR'; mixv.inputs['Factor'].default_value = 0.12
-    L.new(tc.outputs['Object'], mixv.inputs['A']); L.new(warp.outputs['Color'], mixv.inputs['B'])
-    vor = n.new('ShaderNodeTexVoronoi'); vor.inputs['Scale'].default_value = scale; vor.inputs['Randomness'].default_value = 1.0
-    L.new(mixv.outputs['Result'], vor.inputs['Vector'])
-    # ring: dark where the distance to the cell centre is between ~0.22 and ~0.34
-    r1 = n.new('ShaderNodeMapRange'); r1.inputs['From Min'].default_value = 0.18; r1.inputs['From Max'].default_value = 0.23
-    r2 = n.new('ShaderNodeMapRange'); r2.inputs['From Min'].default_value = 0.37; r2.inputs['From Max'].default_value = 0.31
-    L.new(vor.outputs['Distance'], r1.inputs['Value']); L.new(vor.outputs['Distance'], r2.inputs['Value'])
-    ring = n.new('ShaderNodeMath'); ring.operation = 'MINIMUM'
-    L.new(r1.outputs['Result'], ring.inputs[0]); L.new(r2.outputs['Result'], ring.inputs[1])
-    brk = n.new('ShaderNodeTexNoise'); brk.inputs['Scale'].default_value = scale * 4.5; brk.inputs['Detail'].default_value = 1.0
-    L.new(tc.outputs['Object'], brk.inputs['Vector'])
-    gate = n.new('ShaderNodeMapRange'); gate.inputs['From Min'].default_value = 0.36; gate.inputs['From Max'].default_value = 0.44
-    L.new(brk.outputs['Fac'], gate.inputs['Value'])
-    spots = n.new('ShaderNodeMath'); spots.operation = 'MULTIPLY'
-    L.new(ring.outputs[0], spots.inputs[0]); L.new(gate.outputs['Result'], spots.inputs[1])
-    inner = n.new('ShaderNodeMapRange'); inner.inputs['From Min'].default_value = 0.26; inner.inputs['From Max'].default_value = 0.12
-    L.new(vor.outputs['Distance'], inner.inputs['Value'])
-    base = n.new('ShaderNodeMix'); base.data_type = 'RGBA'
-    base.inputs['A'].default_value = srgb('#cf9f52'); base.inputs['B'].default_value = srgb('#b87a36')
-    L.new(inner.outputs['Result'], base.inputs['Factor'])
-    col = n.new('ShaderNodeMix'); col.data_type = 'RGBA'
-    L.new(base.outputs['Result'], col.inputs['A']); col.inputs['B'].default_value = srgb('#24140a')
-    L.new(spots.outputs[0], col.inputs['Factor'])
-    L.new(col.outputs['Result'], b.inputs['Base Color'])
-    return m
-
-
-M_LEO = leopard_material(9.5)
-M_LEO_HEAD = leopard_material(16.0, 'leopard_head')
-M_MUZZLE = mat('muzzle', '#efd9b0', 0.6)
-M_EAR_IN = mat('ear_in', '#3a2414', 0.7)
 
 
 def menu_texture():
@@ -498,73 +452,55 @@ def dice():
     return [d] + pips
 
 
-def skin_body(name, verts, edges, radii, material, subdiv=2):
-    """An organic body from a skeleton: Skin modifier (radius per joint) smoothed by subdivision."""
-    me = bpy.data.meshes.new(name); me.from_pydata([tuple(v) for v in verts], edges, []); me.update()
-    ob = bpy.data.objects.new(name, me); link(ob); ob.data.materials.append(material)
-    sk = ob.modifiers.new('skin', 'SKIN'); sk.use_smooth_shade = True; sk.branch_smoothing = 1.0
-    sv = me.skin_vertices[0].data
-    for i, r in enumerate(radii):
-        sv[i].radius = r
-    sv[0].use_root = True
-    sd = ob.modifiers.new('subd', 'SUBSURF'); sd.levels = subdiv; sd.render_levels = subdiv
-    return ob
+# Dionysus' panther: a real leopard model from Sketchfab (see ../CREDITS.md), CC BY 4.0.
+LEOPARD_UID = 'd02a9709556348968fef810684b4e3fa'
+LEOPARD_GLB = os.path.join(WORK, 'models', f'leopard-{LEOPARD_UID[:8]}.glb')
+
+
+def fetch_leopard():
+    """Download the model once (needs api.sketchfab.com with a token injected by the network, or
+    SKETCHFAB_TOKEN set). After that the build runs offline from LEOPARD_GLB."""
+    if os.path.exists(LEOPARD_GLB): return LEOPARD_GLB
+    import urllib.request
+    os.makedirs(os.path.dirname(LEOPARD_GLB), exist_ok=True)
+    try:
+        req = urllib.request.Request(f'https://api.sketchfab.com/v3/models/{LEOPARD_UID}/download')
+        if os.environ.get('SKETCHFAB_TOKEN'): req.add_header('Authorization', 'Token ' + os.environ['SKETCHFAB_TOKEN'])
+        url = json.load(urllib.request.urlopen(req, timeout=30))['glb']['url']
+        urllib.request.urlretrieve(url, LEOPARD_GLB)
+    except Exception as e:
+        sys.exit(f'[panther] The leopard model is missing and could not be downloaded ({e}).\n'
+                 f'Download "Prowling Leopard 3D Model Free" (glb) from https://sketchfab.com/3d-models/{LEOPARD_UID}\n'
+                 f'and save it as {LEOPARD_GLB}')
+    return LEOPARD_GLB
 
 
 def panther():
-    """Dionysus' panther: the spotted kind of the old mosaics, lying sphinx-style on the counter,
-    head turned to look at you. Built from a skeleton, not blobs."""
+    """The leopard stands on the counter right of Dionysus, head to the left, looking out at you
+    (the model's own three-quarter pose from this side). No lying pose exists among the free models."""
     Y = -0.55; yb = surface_y(Y)
-    near, far = -0.2, 0.2                         # the two sides of the body, in depth
-    J = {   # joint: (x, y above the counter, depth)
-        'rump': (1166, 40, 0.0), 'back': (1110, 46, 0.0), 'chest': (1042, 48, 0.0), 'neck': (1024, 80, -0.07), 'nape': (1012, 100, -0.12),
-        'tail0': (1190, 30, 0.04), 'tail1': (1222, 12, 0.02), 'tail2': (1250, 14, -0.02), 'tail3': (1262, 36, -0.05), 'tail4': (1254, 60, -0.07), 'tail5': (1240, 66, -0.08),
-        'shN': (1036, 30, near), 'elN': (1020, 10, near - 0.02), 'wrN': (982, 7, near - 0.02), 'pawN': (960, 7, near - 0.02),
-        'shF': (1036, 30, far), 'elF': (1022, 10, far), 'wrF': (990, 7, far), 'pawF': (970, 7, far),
-        'hipN': (1146, 32, near * 0.55), 'knN': (1118, 14, near - 0.04), 'hkN': (1160, 8, near - 0.05), 'ftN': (1126, 6, near - 0.06),
-    }
-    names = list(J)
-    verts = [P(x, yb - h, d) for (x, h, d) in J.values()]
-    E = [('rump', 'back'), ('back', 'chest'), ('chest', 'neck'), ('neck', 'nape'), ('rump', 'tail0'), ('tail0', 'tail1'), ('tail1', 'tail2'), ('tail2', 'tail3'), ('tail3', 'tail4'), ('tail4', 'tail5'),
-         ('chest', 'shN'), ('shN', 'elN'), ('elN', 'wrN'), ('wrN', 'pawN'), ('chest', 'shF'), ('shF', 'elF'), ('elF', 'wrF'), ('wrF', 'pawF'),
-         ('rump', 'hipN'), ('hipN', 'knN'), ('knN', 'hkN'), ('hkN', 'ftN')]
-    edges = [(names.index(a_), names.index(b_)) for a_, b_ in E]
-    R_ = {'rump': (0.4, 0.37), 'back': (0.37, 0.35), 'chest': (0.42, 0.36), 'neck': (0.27, 0.26), 'nape': (0.24, 0.23),
-          'tail0': (0.07, 0.07), 'tail1': (0.06, 0.06), 'tail2': (0.055, 0.055), 'tail3': (0.05, 0.05), 'tail4': (0.045, 0.045), 'tail5': (0.05, 0.05),
-          'shN': (0.14, 0.13), 'elN': (0.08, 0.08), 'wrN': (0.065, 0.065), 'pawN': (0.08, 0.06),
-          'shF': (0.13, 0.12), 'elF': (0.075, 0.075), 'wrF': (0.06, 0.06), 'pawF': (0.075, 0.055),
-          'hipN': (0.3, 0.28), 'knN': (0.13, 0.12), 'hkN': (0.07, 0.07), 'ftN': (0.075, 0.055)}
-    body = skin_body('panther', verts, edges, [R_[k] for k in names], M_LEO)
-    parts = [body]
-    # the head, turned to the viewer: skull, muzzle, chin, nose, eyes, ears
-    hc = P(1008, yb - 114, -0.17)
-    def sph(name, loc, r, sc, m_, seg=32):
-        bpy.ops.mesh.primitive_uv_sphere_add(radius=r, location=loc, segments=seg, ring_count=seg // 2); o = bpy.context.active_object
-        o.name = name; o.scale = sc; o.data.materials.append(m_); smooth(o); parts.append(o); return o
-    sph('skull', hc, 0.26, (1.1, 0.95, 0.88), M_LEO_HEAD)
-    sph('cheekL', hc + Vector((-0.11, -0.1, -0.06)), 0.12, (1, 0.9, 0.85), M_LEO_HEAD)
-    sph('cheekR', hc + Vector((0.11, -0.1, -0.06)), 0.12, (1, 0.9, 0.85), M_LEO_HEAD)
-    sph('muzzle', hc + Vector((0, -0.19, -0.1)), 0.09, (1.25, 0.7, 0.62), M_MUZZLE)
-    sph('chin', hc + Vector((0, -0.15, -0.15)), 0.06, (1, 0.7, 0.6), M_MUZZLE)
-    nose = sph('nose', hc + Vector((0, -0.285, -0.05)), 0.04, (1.2, 0.7, 0.7), M_NOSE)
-    for sx in (-1, 1):
-        e = sph('eye', hc + Vector((sx * 0.095, -0.205, 0.04)), 0.042, (1.25, 0.55, 0.85), M_EYE)
-        e.rotation_euler = (0, sx * 0.25, 0)
-        sph('pupil', hc + Vector((sx * 0.095, -0.228, 0.04)), 0.014, (0.6, 0.4, 1.5), M_NOSE, 16)
-        bpy.ops.mesh.primitive_cone_add(radius1=0.085, radius2=0.012, depth=0.15, vertices=24,
-                                        location=hc + Vector((sx * 0.17, 0.02, 0.21)), rotation=(math.radians(-12), sx * math.radians(28), 0))
-        ear = bpy.context.active_object; ear.scale = (1, 0.45, 1); ear.data.materials.append(M_LEO_HEAD); smooth(ear); parts.append(ear)
-        bpy.ops.mesh.primitive_cone_add(radius1=0.055, radius2=0.008, depth=0.1, vertices=24,
-                                        location=hc + Vector((sx * 0.168, -0.02, 0.2)), rotation=(math.radians(-12), sx * math.radians(28), 0))
-        ei = bpy.context.active_object; ei.scale = (1, 0.3, 1); ei.data.materials.append(M_EAR_IN); smooth(ei); parts.append(ei)
-    # an ivy collar, lying on the neck and chest
-    for k in range(6):
-        a_ = math.pi * (0.12 + 0.76 * k / 5)
-        loc = P(1022 + 24 * math.cos(a_), yb - 86 + 10 * math.sin(a_), -0.36 + 0.12 * abs(math.cos(a_)))
-        bpy.ops.mesh.primitive_uv_sphere_add(radius=0.055, location=loc); lf = bpy.context.active_object
-        lf.scale = (0.8, 0.35, 0.55); lf.rotation_euler = (0, a_ + math.pi / 2, 0); lf.data.materials.append(M_IVY); smooth(lf); parts.append(lf)
-    group('panthergrp', parts, Y)
-    return parts
+    before = set(bpy.data.objects)
+    bpy.ops.import_scene.gltf(filepath=fetch_leopard())
+    new = [o for o in bpy.data.objects if o not in before]
+    meshes = [o for o in new if o.type == 'MESH']
+    root = next(o for o in new if o.parent is None)
+    bpy.context.view_layer.update()
+    pts = [o.matrix_world @ Vector(c) for o in meshes for c in o.bound_box]
+    lo = Vector([min(p[i] for p in pts) for i in range(3)]); hi = Vector([max(p[i] for p in pts) for i in range(3)])
+    H = 205 * U                                   # standing height in world units, tail tip included
+    k = H / (hi.z - lo.z)
+    holder = bpy.data.objects.new('panther_holder', None); link(holder)
+    root.parent = holder
+    root.location = (-(lo.x + hi.x) / 2, -(lo.y + hi.y) / 2, -lo.z)   # base centre at the holder's origin
+    holder.scale = (k, k, k)
+    holder.rotation_euler = (0, 0, math.radians(-12))                  # a little more of his flank
+    holder.location = P(1068, yb, 0)
+    for o in meshes:
+        for m_ in o.data.materials:
+            if m_ and m_.node_tree and 'Principled BSDF' in m_.node_tree.nodes:
+                m_.node_tree.nodes['Principled BSDF'].inputs['Specular IOR Level'].default_value = 0.35
+    push(holder, Y)
+    return meshes
 
 
 if ONLY == 'panther':
