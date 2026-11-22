@@ -1,58 +1,58 @@
 {
  "touchable": {
   "menu": {
-   "pixels": 10427,
+   "pixels": 10428,
    "S": 0.41,
    "chroma": 0.169,
    "V": 0.38
   },
   "panther": {
-   "pixels": 16202,
+   "pixels": 22060,
    "S": 0.672,
-   "chroma": 0.442,
-   "V": 0.66
+   "chroma": 0.257,
+   "V": 0.411
   },
   "honey": {
-   "pixels": 4346,
-   "S": 0.759,
-   "chroma": 0.524,
+   "pixels": 4340,
+   "S": 0.76,
+   "chroma": 0.525,
    "V": 0.718
   },
   "shelf": {
-   "pixels": 38759,
+   "pixels": 38739,
    "S": 0.593,
    "chroma": 0.38,
    "V": 0.674
   },
   "dio": {
-   "pixels": 52366,
-   "S": 0.474,
-   "chroma": 0.305,
-   "V": 0.724
+   "pixels": 52633,
+   "S": 0.47,
+   "chroma": 0.302,
+   "V": 0.725
   },
   "all touchable pixels": {
-   "pixels": 110097,
-   "S": 0.538,
-   "chroma": 0.345,
-   "V": 0.677
+   "pixels": 115361,
+   "S": 0.543,
+   "chroma": 0.314,
+   "V": 0.63
   }
  },
  "muted": {
   "wall (left of arch)": {
    "pixels": 87400,
-   "S": 0.629,
+   "S": 0.625,
    "chroma": 0.076,
    "V": 0.13
   },
   "wall (right of arch)": {
-   "pixels": 86938,
+   "pixels": 87400,
    "S": 0.599,
    "chroma": 0.083,
    "V": 0.145
   },
   "columns": {
    "pixels": 48000,
-   "S": 0.639,
+   "S": 0.633,
    "chroma": 0.088,
    "V": 0.151
   },
@@ -63,25 +63,25 @@
    "V": 0.591
   },
   "arch and sunburst": {
-   "pixels": 213311,
-   "S": 0.565,
-   "chroma": 0.093,
+   "pixels": 206501,
+   "S": 0.568,
+   "chroma": 0.094,
    "V": 0.171
   },
   "counter top and front": {
-   "pixels": 223943,
+   "pixels": 224305,
    "S": 0.623,
    "chroma": 0.093,
    "V": 0.153
   },
   "shelf plank": {
-   "pixels": 22192,
+   "pixels": 22209,
    "S": 0.527,
    "chroma": 0.116,
-   "V": 0.224
+   "V": 0.223
   },
   "all untouchable pixels": {
-   "pixels": 905449,
+   "pixels": 900166,
    "S": 0.548,
    "chroma": 0.094,
    "V": 0.209
