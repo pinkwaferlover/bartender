@@ -59,7 +59,7 @@ drawShelf();
 const MENU_R = LAYERS.touch.menu;
 const SHOTS = {
   intro: { L: [440, 40, 720, 200], P: [452, 40, 696, 200] },
-  home: { L: [160, 20, 1280, 800], P: [425, -60, 830, 1250] },
+  home: { L: [160, 20, 1280, 800], P: [446, -60, 830, 1250] },
   menu: { L: [MENU_R.x - 30, MENU_R.y - 14, MENU_R.w + 60, MENU_R.h + 28], P: [MENU_R.x - 8, MENU_R.y - 6, MENU_R.w + 16, MENU_R.h + 12] },
   shelf: { L: [420, 200, 760, 475], P: [440, 180, 720, 400] },
   talk: { L: [470, 300, 800, 430], P: [600, 300, 400, 420] },
