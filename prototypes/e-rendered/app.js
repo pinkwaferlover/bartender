@@ -418,18 +418,32 @@ function finishRecipe() {
 /* 2. Look settings: finish and coverage */
 function applyLook() { document.body.classList.remove(...[...document.body.classList].filter(c => /^(fin|cov)-/.test(c))); document.body.classList.add(`fin-${LOOK.finish}`, `cov-${LOOK.coverage}`); dio.setLook(LOOK); }
 const settings = $('#settings');
+/* Text size: one scale for the recipe step and the reading panels; remembered on this device */
+const TEXT_STEPS = [0.8, 0.9, 1, 1.15, 1.3, 1.5];
+let textI = 2; try { const v = +localStorage.getItem('dio-text'); if (v >= 0 && v < TEXT_STEPS.length && localStorage.getItem('dio-text') !== null) textI = v; } catch (e) {}
+function applyText() { const s = TEXT_STEPS[textI]; document.documentElement.style.setProperty('--text-scale', s); document.documentElement.style.setProperty('--step-size', Math.round(36 * s) + 'px'); try { localStorage.setItem('dio-text', textI); } catch (e) {} }
+applyText();
 function renderSettings() {
-  settings.innerHTML = `<h3>His look</h3>
+  settings.innerHTML = `<h3>Settings</h3>
+   <fieldset><legend>Text size</legend><div class="sizer"><button type="button" class="btn small" id="txtDown" aria-label="Smaller text" ${textI === 0 ? 'disabled' : ''}>A−</button><span class="sizeprev"><b style="font-size:${Math.round(36 * TEXT_STEPS[textI])}px">Aa</b><small>${Math.round(36 * TEXT_STEPS[textI])} px recipe steps</small></span><button type="button" class="btn small" id="txtUp" aria-label="Larger text" ${textI === TEXT_STEPS.length - 1 ? 'disabled' : ''}>A+</button></div></fieldset>
+   <h3>His look</h3>
    <fieldset><legend>Finish</legend><div class="seg">${Object.entries(FINISHES).map(([k, v]) => `<label><input type="radio" name="fin" value="${k}" ${LOOK.finish === k ? 'checked' : ''}>${v}</label>`).join('')}</div></fieldset>
    <fieldset><legend>Coverage</legend><div class="seg">${Object.entries(COVERAGES).map(([k, v]) => `<label><input type="radio" name="cov" value="${k}" ${LOOK.coverage === k ? 'checked' : ''} ${k === 'cheeky' && !LOOK.adult ? 'disabled' : ''}>${k === 'cheeky' ? 'Cheeky<span class="badge">ADULT</span>' : v}</label>`).join('')}</div></fieldset>
    <label class="adult"><input type="checkbox" id="adult" ${LOOK.adult ? 'checked' : ''}> <span>Allow adult looks. Cheeky stays implied: a fig leaf, and something always passes in front.</span></label>
-   <p class="note">Only the painted-marble finish is rendered so far; the other finishes and coverages apply to the drawn fallback figure.</p>`;
+   <p class="note">Only the painted-marble finish is rendered so far; the other finishes and coverages apply to the drawn fallback figure.</p>
+   <p class="note">Leopard: “Prowling Leopard 3D Model Free” by iRahulRajput, <a href="https://sketchfab.com/3d-models/prowling-leopard-3d-model-free-d02a9709556348968fef810684b4e3fa" target="_blank" rel="noopener">Sketchfab</a>, CC BY 4.0, rendered in Blender.</p>`;
+  $('#txtDown').onclick = () => { if (textI > 0) { textI--; applyText(); renderSettings(); } };
+  $('#txtUp').onclick = () => { if (textI < TEXT_STEPS.length - 1) { textI++; applyText(); renderSettings(); } };
   settings.querySelectorAll('input[name=fin]').forEach(i => i.onchange = () => { LOOK.finish = i.value; applyLook(); });
   settings.querySelectorAll('input[name=cov]').forEach(i => i.onchange = () => { LOOK.coverage = i.value; applyLook(); });
   $('#adult').onchange = e => { LOOK.adult = e.target.checked; if (!LOOK.adult && LOOK.coverage === 'cheeky') LOOK.coverage = 'classical'; applyLook(); renderSettings(); };
 }
-$('#gear').onclick = () => { settings.hidden = !settings.hidden; if (!settings.hidden) renderSettings(); };
-document.addEventListener('click', e => { if (!settings.hidden && !settings.contains(e.target) && !$('#gear').contains(e.target)) settings.hidden = true; });
+const openSettings = e => { if (e) e.stopPropagation(); settings.hidden = !settings.hidden; if (!settings.hidden) renderSettings(); };
+$('#gear').onclick = openSettings;
+$('#lamp').addEventListener('click', openSettings);
+settings.addEventListener('click', e => e.stopPropagation());
+$('#lamp').addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openSettings(e); } });
+document.addEventListener('click', e => { if (!settings.hidden && !settings.contains(e.target) && !$('#lamp').contains(e.target)) settings.hidden = true; });
 applyLook();
 
 /* hooks for the screenshot script */

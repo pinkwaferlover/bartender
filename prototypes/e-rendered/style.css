@@ -1,4 +1,4 @@
-:root{--step-size:36px;--page:#0f0e10;--cream:#f0e7d8;--ink:#f0e7d8;--glass:rgba(240,231,216,.16);--muted:#9b8e7e;--neon:#ff5c8a;--gold:#d8b25a;--green:#1f4a3a;
+:root{--step-size:36px;--text-scale:1;--page:#0f0e10;--cream:#f0e7d8;--ink:#f0e7d8;--glass:rgba(240,231,216,.16);--muted:#9b8e7e;--neon:#ff5c8a;--gold:#d8b25a;--green:#1f4a3a;
  --skin:#e8d4bd;--shade:#b89a80;--veinop:.28;--red:#9e2a22;--red2:#7a1d18;--grn:#2f5a32;--grn2:#244726;--lip:#b7615a;--cheek:#d9907a;--cheekop:.35;--hair:#2b1b12;
  --f-sweet:#d9a441;--f-bal:#c9824a;--f-bit:#b3221c;--f-dec:#6b3a22;--f-str:#b8661c;--f-fre:#86c03a}
 *{box-sizing:border-box}
@@ -179,3 +179,9 @@ button{font:inherit;color:inherit;cursor:pointer}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 /* the shelf sheet sits below the shelf it describes */
 .sheet.shelfsheet{top:auto;bottom:18px;transform:translateX(-50%);max-height:44vh}
+
+/* Text size setting: the step uses --step-size; reading panels scale with --text-scale */
+.bubble,.recipe .ing,.recipe .meta,.recipe .swap,.panel .drink,.menunote{zoom:var(--text-scale)}
+.sizer{display:flex;align-items:center;gap:10px}
+.sizeprev{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;line-height:1}.sizeprev b{font-weight:700}.sizeprev small{font-size:12px;color:#7a5a40;margin-top:4px}.sizer .btn{flex:none}
+#lamp{cursor:pointer}

@@ -84,6 +84,16 @@
  <g id="counterThings">
   <g id="honey" class="touch" tabindex="0" role="button" aria-label="The honey jar"></g>
   <g id="menu" class="touch" tabindex="0" role="button" aria-label="Cocktail menu"></g>
+  <!-- Settings: a brass lamp on the counter (turn the lamp to change the room: text size and his look) -->
+  <g id="lamp" class="touch" tabindex="0" role="button" aria-label="Settings: text size and his look" transform="translate(690 655) scale(1.35)">
+   <ellipse cx="0" cy="-58" rx="26" ry="30" fill="#ffb84d" opacity=".18"/>
+   <rect x="-13" y="-6" width="26" height="6" rx="2" fill="#b8862f"/>
+   <path d="M-5 -6 L-3 -26 H3 L5 -6 Z" fill="#c99a3e"/>
+   <path d="M-11 -26 Q-14 -50 -6 -70 H6 Q14 -50 11 -26 Z" fill="#f4c56a" opacity=".85"/>
+   <path d="M0 -36 Q-5 -44 0 -54 Q5 -44 0 -36 Z" fill="#ff8a1f"/>
+   <rect x="-8" y="-74" width="16" height="5" rx="2" fill="#b8862f"/>
+   <circle cx="14" cy="-14" r="4" fill="#d9a441" stroke="#7a5520" stroke-width="1.5"/>
+  </g>
   <g id="panther" class="touch" tabindex="0" role="button" aria-label="The panther. Barman's choice">
    <g id="pantherBody"></g>
    <g id="dice"></g>
@@ -93,7 +103,7 @@
  <g id="drink"></g>
 </svg>
 
-<button id="gear" class="hud-btn" aria-label="Look settings"><svg viewBox="0 0 24 24" width="22" height="22"><path d="M12 8.5a3.5 3.5 0 1 0 0 7a3.5 3.5 0 0 0 0-7Zm8.4 4.9l1.6 1.2l-2 3.4l-1.9-.7a7.7 7.7 0 0 1-1.7 1l-.3 2H12h-4l-.3-2a7.7 7.7 0 0 1-1.7-1l-1.9.7l-2-3.4l1.6-1.2a7.6 7.6 0 0 1 0-2l-1.6-1.2l2-3.4l1.9.7a7.7 7.7 0 0 1 1.7-1l.3-2h4h4l.3 2a7.7 7.7 0 0 1 1.7 1l1.9-.7l2 3.4l-1.6 1.2a7.6 7.6 0 0 1 0 2Z" fill="currentColor"/></svg></button>
+<button id="gear" class="hud-btn" aria-label="Settings" hidden><svg viewBox="0 0 24 24" width="22" height="22"><path d="M12 8.5a3.5 3.5 0 1 0 0 7a3.5 3.5 0 0 0 0-7Zm8.4 4.9l1.6 1.2l-2 3.4l-1.9-.7a7.7 7.7 0 0 1-1.7 1l-.3 2H12h-4l-.3-2a7.7 7.7 0 0 1-1.7-1l-1.9.7l-2-3.4l1.6-1.2a7.6 7.6 0 0 1 0-2l-1.6-1.2l2-3.4l1.9.7a7.7 7.7 0 0 1 1.7-1l.3-2h4h4l.3 2a7.7 7.7 0 0 1 1.7 1l1.9-.7l2 3.4l-1.6 1.2a7.6 7.6 0 0 1 0 2Z" fill="currentColor"/></svg></button>
 <button id="back" class="hud-btn" aria-label="Back to the bar" hidden>← Bar</button>
 <button id="talkBtn" class="pill" hidden>Talk to Dionysus</button>
 <div id="hints" aria-hidden="true"></div>
@@ -110,7 +120,7 @@
 </div>
 
 <section id="panel" class="panel" hidden></section>
-<section id="settings" class="settings" hidden aria-label="Look settings"></section>
+<section id="settings" class="settings" hidden aria-label="Settings"></section>
 </div>
 <script src="layers.js"></script>
 <script src="data.js"></script>

@@ -57,7 +57,7 @@ The arena (two Opus critics, one Opus judge, reports in [`arena/`](arena/)) pick
 | R8 | Honey comes from a honey jar the user can tap. He never touches the counter. |
 | R9 | The menu shows every drink. The ones you can't make are marked "needs Campari" and so on. |
 | R10 | On the recipe screen, Dionysus is sharp, beside the card. This replaces "blurred behind". |
-| R11 | Step size will be chosen by the owner on the tablet, using [`prototypes/step-size/`](../../prototypes/step-size/index.html). |
+| R11 | Text size is a setting the user changes (A− / A+), not a fixed number. Settings open from a brass lamp on the bar, not a cog. Changed 22 November 2026: the owner could not settle a size on the test page. |
 | R12 | "Warm me up", "After dinner" and similar phrases are words he understands, not buttons. The four questions stay as they are. |
 | R13 | His body waits until the MakeHuman sites are allowed. The bar scene and app changes go first. |
 
