@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Dionysus · Rendered</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,700&display=swap">
+<link rel="stylesheet" href="style.css">
+<link rel="preload" as="image" href="img/bg-bar.webp">
+</head>
+<body>
+<div id="stage">
+<!-- Prototype E. The bar is rendered in Blender (blender/build_bar.py) as layers placed in prototype B's
+     world units; the SVG viewBox is still the camera. Order, back to front:
+     background render, shelf bottles, Dionysus (his own swappable layer), the counter's touchables, the drink. -->
+<svg id="scene" viewBox="420 20 760 220" preserveAspectRatio="xMidYMid slice" role="img" aria-label="Dionysus behind his bar">
+ <defs>
+  <pattern id="veins" width="120" height="120" patternUnits="userSpaceOnUse">
+   <path d="M-10 30 C20 20 30 50 60 40 S100 10 130 30 M10 90 C40 80 50 110 80 96 S110 70 130 84 M40 0 C46 30 30 50 44 70" fill="none" stroke="#8d8a86" stroke-width="1.3" opacity=".7"/>
+  </pattern>
+  <clipPath id="liqclip"><rect id="liqrect" x="0" y="0" width="100" height="0"/></clipPath>
+  <clipPath id="behindCounter"><rect id="behindRect" x="-3000" y="-3000" width="7600" height="3600"/></clipPath>
+ </defs>
+
+ <!-- The muted world: one render per camera position. Close-ups are sharper crops of the same picture. -->
+ <g id="bg">
+  <rect id="bgTop" x="-3000" y="-3000" width="7600" height="2760" fill="#0b0909"/>
+  <rect id="bgBottom" x="-3000" y="1359" width="7600" height="3000" fill="#150e0a"/>
+ </g>
+
+ <!-- 3. The shelf: your Bottles, one rendered bottle per Style -->
+ <g id="shelf" class="touch" tabindex="0" role="button" aria-label="Your shelf">
+  <rect id="shelfHit" x="470" y="276" width="660" height="124" fill="transparent"/>
+  <g id="bottles"></g>
+ </g>
+
+ <!-- 2. Dionysus: his own layer. Today prototype B's drawn figure; rendered loops plug in later (dio-layer.js). -->
+ <g id="dioLayer" clip-path="url(#behindCounter)">
+ <!-- 2. Dionysus -->
+ <g id="dio" class="touch" transform="translate(800 672)" tabindex="0" role="button" aria-label="Dionysus. Tap for a story">
+  <g id="body">
+   <!-- thyrsus leaning behind him, used as a bar spoon in recipes -->
+   <g id="thyrsusRest"><rect x="150" y="-300" width="7" height="300" rx="3" fill="#7a5530"/><ellipse cx="153.5" cy="-312" rx="13" ry="22" fill="#5b7a2e"/><path d="M142 -318 h23 M141 -306 h25 M143 -296 h21" stroke="#3f5a1f" stroke-width="3"/></g>
+   <path class="hair" d="M-44 -262 Q-50 -205 -26 -190 H26 Q50 -205 44 -262 Z"/>
+   <g id="torso">
+    <path class="skin" d="M-112 4 L-104 -150 Q-100 -184 -60 -191 L-20 -198 H20 L60 -191 Q100 -184 104 -150 L112 4 Z"/>
+    <path class="veins" d="M-112 4 L-104 -150 Q-100 -184 -60 -191 L-20 -198 H20 L60 -191 Q100 -184 104 -150 L112 4 Z"/>
+    <path class="shade" d="M-62 -142 Q-32 -124 -4 -140 M4 -140 Q32 -124 62 -142 M0 -120 V-40" fill="none" stroke-width="3"/>
+    <path class="cov cov-modest chiton" d="M-109 4 L-101 -150 Q-97 -180 -60 -187 Q-30 -168 0 -166 Q30 -168 60 -187 Q97 -180 101 -150 L109 4 Z"/>
+    <path class="cov cov-modest chiton-edge" d="M-60 -187 Q-30 -168 0 -166 Q30 -168 60 -187" fill="none" stroke-width="5"/>
+    <path class="cov cov-classical cov-modest himation" d="M28 -197 Q92 -194 104 -150 L112 4 L-112 4 L-108 -36 Q-26 -66 28 -197 Z"/>
+    <path class="cov cov-classical cov-modest himation-fold" d="M-80 -30 Q-10 -70 40 -170 M-40 0 Q20 -60 70 -150 M20 4 Q60 -60 90 -120" fill="none" stroke-width="3"/>
+    <g class="cov cov-cheeky" id="figleaf"><path d="M0 6 C-30 -6 -36 -26 -22 -30 C-30 -44 -12 -50 -4 -40 C-2 -56 14 -54 12 -40 C24 -50 38 -40 26 -28 C40 -24 30 -4 0 6 Z" fill="#4f7d34"/><path d="M0 4 V-36 M0 -14 L-16 -26 M0 -18 L16 -30" stroke="#35591f" stroke-width="2" fill="none"/></g>
+    <!-- fawn skin (nebris), over his right shoulder -->
+    <path class="fawn" d="M-104 -150 Q-98 -188 -54 -193 L-34 -152 Q-16 -84 44 -24 L26 4 Q-62 -54 -104 -150 Z"/>
+    <g class="fawnspots"><circle cx="-70" cy="-160" r="5"/><circle cx="-52" cy="-130" r="4"/><circle cx="-36" cy="-100" r="5"/><circle cx="-14" cy="-70" r="4"/><circle cx="8" cy="-44" r="5"/><circle cx="-80" cy="-130" r="3.5"/></g>
+    <path d="M-60 -192 l-6 -10 l14 2 Z" class="fawn"/>
+   </g>
+   <rect class="skin" x="-17" y="-226" width="34" height="38"/>
+   <g id="head">
+    <ellipse class="skin" cx="-38" cy="-252" rx="8" ry="12"/><ellipse class="skin" cx="38" cy="-252" rx="8" ry="12"/>
+    <ellipse class="skin" cx="0" cy="-256" rx="38" ry="46"/>
+    <ellipse class="veins" cx="0" cy="-256" rx="38" ry="46"/>
+    <g id="face">
+     <path class="shade" d="M-24 -262 q9 -5 17 0 M7 -262 q9 -5 17 0" fill="none" stroke-width="3.4" stroke-linecap="round"/>
+     <path class="brow" d="M-26 -272 q10 -6 19 -1 M7 -273 q10 -5 19 1" fill="none" stroke-width="3.2" stroke-linecap="round"/>
+     <path class="shade" d="M0 -258 v16 l-5 3" fill="none" stroke-width="2.6" stroke-linecap="round"/>
+     <path class="lip" d="M-11 -228 q11 6 22 0 q-11 4 -22 0 Z"/>
+     <circle class="cheek" cx="-20" cy="-238" r="7"/><circle class="cheek" cx="20" cy="-238" r="7"/>
+    </g>
+    <g class="hair" id="curls"></g>
+    <g id="wreath"></g>
+    <g id="mintsprout"></g>
+   </g>
+   <g id="arms"><path id="armL" class="arm"/><path id="armLv" class="armv"/><path id="armR" class="arm"/><path id="armRv" class="armv"/>
+    <circle id="handL" class="skin" r="15"/><circle id="handR" class="skin" r="15"/></g>
+   <g id="props"></g>
+  </g>
+ </g>
+ </g>
+
+ <!-- On the counter: the touchables, rendered alone so they keep true colour and can light up -->
+ <g id="counterThings">
+  <g id="honey" class="touch" tabindex="0" role="button" aria-label="The honey jar"></g>
+  <g id="menu" class="touch" tabindex="0" role="button" aria-label="Cocktail menu"></g>
+  <g id="panther" class="touch" tabindex="0" role="button" aria-label="The panther. Barman's choice">
+   <g id="pantherBody"></g>
+   <g id="dice"></g>
+  </g>
+ </g>
+ <g id="passing"></g>
+ <g id="drink"></g>
+</svg>
+
+<button id="gear" class="hud-btn" aria-label="Look settings"><svg viewBox="0 0 24 24" width="22" height="22"><path d="M12 8.5a3.5 3.5 0 1 0 0 7a3.5 3.5 0 0 0 0-7Zm8.4 4.9l1.6 1.2l-2 3.4l-1.9-.7a7.7 7.7 0 0 1-1.7 1l-.3 2H12h-4l-.3-2a7.7 7.7 0 0 1-1.7-1l-1.9.7l-2-3.4l1.6-1.2a7.6 7.6 0 0 1 0-2l-1.6-1.2l2-3.4l1.9.7a7.7 7.7 0 0 1 1.7-1l.3-2h4h4l.3 2a7.7 7.7 0 0 1 1.7 1l1.9-.7l2 3.4l-1.6 1.2a7.6 7.6 0 0 1 0 2Z" fill="currentColor"/></svg></button>
+<button id="back" class="hud-btn" aria-label="Back to the bar" hidden>← Bar</button>
+<button id="talkBtn" class="pill" hidden>Talk to Dionysus</button>
+<div id="hints" aria-hidden="true"></div>
+
+<div id="bubble" class="bubble" hidden aria-live="polite">
+ <p id="say"></p>
+ <div id="chips" class="chips"></div>
+ <form id="talk" class="talk" hidden>
+  <input id="talkIn" type="text" placeholder="Or say it: “warm me up”, “after dinner”…" autocomplete="off" aria-label="Tell Dionysus what you fancy">
+  <button type="button" id="mic" class="mic" aria-label="Speak to him"><svg viewBox="0 0 24 24" width="20" height="20"><rect x="9" y="3" width="6" height="11" rx="3" fill="currentColor"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21M8.5 21h7" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></svg></button>
+  <button type="submit" class="send">Ask</button>
+ </form>
+ <button id="bubbleX" class="x" aria-label="Close">×</button>
+</div>
+
+<section id="panel" class="panel" hidden></section>
+<section id="settings" class="settings" hidden aria-label="Look settings"></section>
+</div>
+<script src="layers.js"></script>
+<script src="data.js"></script>
+<script src="stories.js"></script>
+<script src="draw.js"></script>
+<script src="inventory.js"></script>
+<script src="logic.js"></script>
+<script src="dio-layer.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

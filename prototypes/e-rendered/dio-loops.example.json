@@ -1,0 +1,13 @@
+{
+  "_about": "The shape of a rendered-loops manifest for dio-layer.js (R4). Not used yet: his body waits for R13. Open index.html?dio=loops&loops=<this file's path> once real frames exist. rect and head are in world units (prototype B's SVG space: he stands at x 800, feet at y 672). Each loop is a list of frames or a video. A recipe step plays its loop once, then repeats from 'hold' (a frame index, or seconds for video) while he waits for your tap.",
+  "rect": [600, 300, 400, 380],
+  "head": [750, 330, 100, 110],
+  "loops": {
+    "polish": { "frames": ["loops/polish/0001.webp", "loops/polish/0002.webp"], "fps": 12 },
+    "stir":   { "frames": ["loops/stir/0001.webp"], "fps": 12, "hold": 20 },
+    "pour":   { "frames": ["loops/pour/0001.webp"], "fps": 12, "hold": 24 },
+    "shake":  { "video": "loops/shake.webm", "hold": 2.0 },
+    "reach":  { "frames": ["loops/reach/0001.webp"], "fps": 12, "hold": 18 },
+    "story":  { "frames": ["loops/story/0001.webp"], "fps": 12 }
+  }
+}

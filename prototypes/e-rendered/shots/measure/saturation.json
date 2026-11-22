@@ -1,0 +1,95 @@
+{
+ "touchable": {
+  "menu": {
+   "pixels": 10429,
+   "S": 0.41,
+   "chroma": 0.169,
+   "V": 0.38
+  },
+  "panther": {
+   "pixels": 15050,
+   "S": 0.671,
+   "chroma": 0.35,
+   "V": 0.527
+  },
+  "honey": {
+   "pixels": 4338,
+   "S": 0.759,
+   "chroma": 0.525,
+   "V": 0.718
+  },
+  "shelf": {
+   "pixels": 38744,
+   "S": 0.593,
+   "chroma": 0.38,
+   "V": 0.674
+  },
+  "dio": {
+   "pixels": 52677,
+   "S": 0.475,
+   "chroma": 0.305,
+   "V": 0.723
+  },
+  "all touchable pixels": {
+   "pixels": 109005,
+   "S": 0.537,
+   "chroma": 0.331,
+   "V": 0.658
+  }
+ },
+ "muted": {
+  "wall (left of arch)": {
+   "pixels": 87400,
+   "S": 0.628,
+   "chroma": 0.076,
+   "V": 0.13
+  },
+  "wall (right of arch)": {
+   "pixels": 86784,
+   "S": 0.599,
+   "chroma": 0.083,
+   "V": 0.145
+  },
+  "columns": {
+   "pixels": 48000,
+   "S": 0.64,
+   "chroma": 0.088,
+   "V": 0.151
+  },
+  "neon sign (board)": {
+   "pixels": 126000,
+   "S": 0.322,
+   "chroma": 0.157,
+   "V": 0.591
+  },
+  "arch and sunburst": {
+   "pixels": 213446,
+   "S": 0.565,
+   "chroma": 0.093,
+   "V": 0.171
+  },
+  "counter top and front": {
+   "pixels": 224978,
+   "S": 0.624,
+   "chroma": 0.093,
+   "V": 0.152
+  },
+  "shelf plank": {
+   "pixels": 22184,
+   "S": 0.526,
+   "chroma": 0.115,
+   "V": 0.223
+  },
+  "all untouchable pixels": {
+   "pixels": 906539,
+   "S": 0.548,
+   "chroma": 0.094,
+   "V": 0.209
+  }
+ },
+ "rule": {
+  "least saturated touchable (chroma)": 0.169,
+  "most saturated untouchable (chroma)": 0.157,
+  "holds": true
+ }
+}

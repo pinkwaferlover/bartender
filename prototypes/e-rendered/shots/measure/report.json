@@ -1,0 +1,63 @@
+{
+ "taps": {
+  "menu": {
+   "taps": 2,
+   "recipe": true
+  },
+  "talk": {
+   "taps": 3,
+   "recipe": true
+  },
+  "choice": {
+   "taps": 1,
+   "recipe": true,
+   "kicker": "🎲 Barman’s choice"
+  },
+  "phoneChoice": {
+   "recipe": true
+  },
+  "phoneTalk": {
+   "taps": 3,
+   "recipe": true
+  }
+ },
+ "checks": {
+  "warmButton": false,
+  "warmHeard": "Something to warm you, after dinner. I hear you. 8 fit. Try one, or narrow it: Got a spirit in mind?",
+  "closest": {
+   "say": "Nothing fits all of that. Here's what's closest, without bitter or Tequila:",
+   "results": 6
+  },
+  "stepSize": "36px",
+  "waiting": true,
+  "dioBlur": "none",
+  "advancedByTap": 1,
+  "pasteRead": 9,
+  "phoneInFrame": [
+   [
+    "menu",
+    true
+   ],
+   [
+    "panther",
+    true
+   ],
+   [
+    "honey",
+    true
+   ],
+   [
+    "bottles",
+    true
+   ]
+  ],
+  "reducedMotion": {
+   "camJumps": true,
+   "runningAnimations": 0,
+   "waiting": true
+  }
+ },
+ "weightMB": 0.38,
+ "files": 36,
+ "errors": []
+}
