@@ -1,0 +1,35 @@
+/* Copy of inventory.example.json, as a script so the page also works from file:// */
+const INVENTORY={
+  "bar": "Example bar",
+  "updated": "2026-11-21",
+  "have": [
+    "bourbon",
+    "rye",
+    "blended scotch",
+    "islay scotch",
+    "irish whiskey",
+    "london dry gin",
+    "white rum",
+    "sweet vermouth",
+    "dry vermouth",
+    "angostura bitters",
+    "orange bitters",
+    "triple sec",
+    "amaretto",
+    "honey",
+    "sugar syrup",
+    "lemon",
+    "lime",
+    "orange",
+    "fresh ginger",
+    "ginger ale",
+    "soda water",
+    "tonic water",
+    "cocktail cherries",
+    "egg white",
+    "coffee",
+    "demerara sugar",
+    "grapefruit",
+    "mint"
+  ]
+};
