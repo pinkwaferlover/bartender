@@ -57,10 +57,7 @@
    "waiting": true
   }
  },
- "weightMB": 0.43,
- "files": 37,
- "errors": [
-  "[reduced-motion] console: Failed to load resource: the server responded with a status of 404 (File not found)",
-  "[weight] console: Failed to load resource: the server responded with a status of 404 (File not found)"
- ]
+ "weightMB": 1.4,
+ "files": 51,
+ "errors": []
 }

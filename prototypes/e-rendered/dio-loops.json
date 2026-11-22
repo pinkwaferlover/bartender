@@ -1,0 +1,145 @@
+{
+ "loops": {
+  "polish": {
+   "frames": [
+    "img/dio/polish/0001.webp",
+    "img/dio/polish/0002.webp",
+    "img/dio/polish/0003.webp",
+    "img/dio/polish/0004.webp",
+    "img/dio/polish/0005.webp",
+    "img/dio/polish/0006.webp",
+    "img/dio/polish/0007.webp",
+    "img/dio/polish/0008.webp",
+    "img/dio/polish/0009.webp",
+    "img/dio/polish/0010.webp",
+    "img/dio/polish/0011.webp",
+    "img/dio/polish/0012.webp",
+    "img/dio/polish/0013.webp",
+    "img/dio/polish/0014.webp"
+   ],
+   "fps": 10,
+   "hold": 0,
+   "secondsPerFrame": 6.7
+  },
+  "stir": {
+   "frames": [
+    "img/dio/stir/0001.webp",
+    "img/dio/stir/0002.webp",
+    "img/dio/stir/0003.webp",
+    "img/dio/stir/0004.webp",
+    "img/dio/stir/0005.webp",
+    "img/dio/stir/0006.webp",
+    "img/dio/stir/0007.webp",
+    "img/dio/stir/0008.webp",
+    "img/dio/stir/0009.webp",
+    "img/dio/stir/0010.webp",
+    "img/dio/stir/0011.webp",
+    "img/dio/stir/0012.webp"
+   ],
+   "fps": 12,
+   "hold": 0,
+   "secondsPerFrame": 6.2
+  },
+  "pour": {
+   "frames": [
+    "img/dio/pour/0001.webp",
+    "img/dio/pour/0002.webp",
+    "img/dio/pour/0003.webp",
+    "img/dio/pour/0004.webp",
+    "img/dio/pour/0005.webp",
+    "img/dio/pour/0006.webp",
+    "img/dio/pour/0007.webp",
+    "img/dio/pour/0008.webp",
+    "img/dio/pour/0009.webp",
+    "img/dio/pour/0010.webp",
+    "img/dio/pour/0011.webp",
+    "img/dio/pour/0012.webp",
+    "img/dio/pour/0013.webp",
+    "img/dio/pour/0014.webp"
+   ],
+   "fps": 10,
+   "hold": 9,
+   "secondsPerFrame": 5.8
+  },
+  "shake": {
+   "frames": [
+    "img/dio/shake/0001.webp",
+    "img/dio/shake/0002.webp",
+    "img/dio/shake/0003.webp",
+    "img/dio/shake/0004.webp",
+    "img/dio/shake/0005.webp",
+    "img/dio/shake/0006.webp",
+    "img/dio/shake/0007.webp",
+    "img/dio/shake/0008.webp",
+    "img/dio/shake/0009.webp",
+    "img/dio/shake/0010.webp",
+    "img/dio/shake/0011.webp",
+    "img/dio/shake/0012.webp"
+   ],
+   "fps": 14,
+   "hold": 0,
+   "secondsPerFrame": 5.4
+  },
+  "reach": {
+   "frames": [
+    "img/dio/reach/0001.webp",
+    "img/dio/reach/0002.webp",
+    "img/dio/reach/0003.webp",
+    "img/dio/reach/0004.webp",
+    "img/dio/reach/0005.webp",
+    "img/dio/reach/0006.webp",
+    "img/dio/reach/0007.webp",
+    "img/dio/reach/0008.webp",
+    "img/dio/reach/0009.webp",
+    "img/dio/reach/0010.webp",
+    "img/dio/reach/0011.webp",
+    "img/dio/reach/0012.webp",
+    "img/dio/reach/0013.webp",
+    "img/dio/reach/0014.webp"
+   ],
+   "fps": 10,
+   "hold": 11,
+   "secondsPerFrame": 6.3
+  },
+  "story": {
+   "frames": [
+    "img/dio/story/0001.webp",
+    "img/dio/story/0002.webp",
+    "img/dio/story/0003.webp",
+    "img/dio/story/0004.webp",
+    "img/dio/story/0005.webp",
+    "img/dio/story/0006.webp",
+    "img/dio/story/0007.webp",
+    "img/dio/story/0008.webp",
+    "img/dio/story/0009.webp",
+    "img/dio/story/0010.webp",
+    "img/dio/story/0011.webp",
+    "img/dio/story/0012.webp",
+    "img/dio/story/0013.webp",
+    "img/dio/story/0014.webp"
+   ],
+   "fps": 8,
+   "hold": 0,
+   "secondsPerFrame": 6.1
+  }
+ },
+ "rect": [
+  560,
+  290,
+  480,
+  350
+ ],
+ "head": [
+  748,
+  317,
+  102,
+  162
+ ],
+ "about": "Dionysus, MakeHuman (MPFB2) base in painted marble, rendered by blender/build_dionysus.py. rect and head are in world units (prototype B's SVG space).",
+ "render": {
+  "engine": "Cycles (CPU)",
+  "samples": 24,
+  "denoiser": "OpenImageDenoise",
+  "pxPerWorldUnit": 1.5
+ }
+}

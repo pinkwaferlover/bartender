@@ -423,7 +423,7 @@ function renderSettings() {
    <fieldset><legend>Finish</legend><div class="seg">${Object.entries(FINISHES).map(([k, v]) => `<label><input type="radio" name="fin" value="${k}" ${LOOK.finish === k ? 'checked' : ''}>${v}</label>`).join('')}</div></fieldset>
    <fieldset><legend>Coverage</legend><div class="seg">${Object.entries(COVERAGES).map(([k, v]) => `<label><input type="radio" name="cov" value="${k}" ${LOOK.coverage === k ? 'checked' : ''} ${k === 'cheeky' && !LOOK.adult ? 'disabled' : ''}>${k === 'cheeky' ? 'Cheeky<span class="badge">ADULT</span>' : v}</label>`).join('')}</div></fieldset>
    <label class="adult"><input type="checkbox" id="adult" ${LOOK.adult ? 'checked' : ''}> <span>Allow adult looks. Cheeky stays implied: a fig leaf, and something always passes in front.</span></label>
-   <p class="note">His body is a placeholder: prototype B's drawing, until the rendered loops arrive.</p>`;
+   <p class="note">Only the painted-marble finish is rendered so far; the other finishes and coverages apply to the drawn fallback figure.</p>`;
   settings.querySelectorAll('input[name=fin]').forEach(i => i.onchange = () => { LOOK.finish = i.value; applyLook(); });
   settings.querySelectorAll('input[name=cov]').forEach(i => i.onchange = () => { LOOK.coverage = i.value; applyLook(); });
   $('#adult').onchange = e => { LOOK.adult = e.target.checked; if (!LOOK.adult && LOOK.coverage === 'cheeky') LOOK.coverage = 'classical'; applyLook(); renderSettings(); };

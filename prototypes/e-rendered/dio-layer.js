@@ -1,10 +1,11 @@
 /* The Dionysus layer (R4, R13). The bar talks to Dionysus only through this interface, so how he is
    drawn can change without touching the scene. Two implementations:
 
-   SvgDio   : prototype B's flat figure, solved each frame (two-bone IK). The placeholder until his body
-              is built (R13 waits for the MakeHuman sites).
-   LoopDio  : rendered loops, one per action, each a list of frames or a video (R4). Plugs in later:
-              open the page with ?dio=loops&loops=<manifest.json>. See dio-loops.example.json.
+   LoopDio  : the default. Rendered loops, one per action, each a list of frames or a video (R4), from
+              blender/build_dionysus.py (a MakeHuman base in painted marble, R3). Manifest: dio-loops.json;
+              another can be given with ?loops=<manifest.json>. See dio-loops.example.json for the format.
+   SvgDio   : prototype B's flat figure, solved each frame (two-bone IK). Shown until the loops have loaded,
+              and kept if they can't load (for example from file://), or always with ?dio=svg.
 
    Interface (both):
      el                      the layer's root <g>, in world units (he stands at x 800, his feet at y 672)
@@ -26,12 +27,19 @@ const ACT_S = 3.2;   // how long acting out one step takes, before he waits for 
 
 function makeDio(root) {
   const q = new URLSearchParams(location.search);
-  if (q.get('dio') === 'loops' && q.get('loops')) {
-    const loops = LoopDio(root);
-    fetch(q.get('loops')).then(r => r.json()).then(m => loops.load(m)).catch(() => loops.fail());
-    return loops;
-  }
-  return SvgDio(root);
+  const svgDio = SvgDio(root);
+  if (q.get('dio') === 'svg') return svgDio;
+  // Start with the drawn figure, switch to the rendered loops once their manifest and first frames are in.
+  let cur = svgDio; const loops = LoopDio(root);
+  fetch(q.get('loops') || 'dio-loops.json').then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
+    .then(m => loops.load(m)).then(() => { loops.copyState(cur); cur = loops; })
+    .catch(e => { console.warn('Dionysus loops not loaded (' + e.message + '); keeping the drawn figure.'); loops.fail(); });
+  const api = {};
+  ['idle', 'story', 'perform', 'lookUp', 'setLook', 'tick', 'headRect'].forEach(k => { api[k] = (...a) => { if (k === 'setLook' || k === 'lookUp') { svgDio[k](...a); loops[k](...a); } return cur[k](...a); }; });
+  Object.defineProperty(api, 'kind', { get: () => cur.kind });
+  Object.defineProperty(api, 'acting', { get: () => cur.acting });
+  Object.defineProperty(api, 'el', { get: () => cur.el });
+  return api;
 }
 
 /* ---------------------------------------------------------------- SvgDio: B's figure */
@@ -250,45 +258,78 @@ function SvgDio(root) {
    manifest: { rect: [x, y, w, h] in world units (where the rendered frames sit),
                head: [x, y, w, h] (for the speech bubble),
                loops: { polish: { frames: ["a.webp", ...], fps: 12, hold: 8 } | { video: "polish.webm", hold: 1.6 }, ... } }
-   A loop plays once, then repeats from `hold` (a frame index, or seconds for video): for a recipe step that
-   tail is him waiting for your tap. polish and story repeat whole. */
+   idle (polish) and story repeat whole. A recipe step plays its loop for at least ACT_S seconds and at least
+   once, then he waits for your tap: on the loop's tail from `hold` (a frame index, or seconds for video), or
+   still on its first frame when hold is 0. With reduced motion every loop is a single still frame. */
 function LoopDio(root) {
-  const NS = 'http://www.w3.org/2000/svg';
-  const g = document.createElementNS(NS, 'g'); g.id = 'dioLoops'; root.parentNode.insertBefore(g, root.nextSibling);
-  let M = null, cur = null, f = 0, ft = 0, done = null, ready = false, imgEl = null, vid = null, playedOnce = false;
+  const NS = 'http://www.w3.org/2000/svg', RM = reduceMotion();
+  // the frames live inside #dio, so taps on him still reach the app's handler; B's figure (#body) is hidden
+  const g = document.createElementNS(NS, 'g'); g.id = 'dioLoops'; root.appendChild(g);
+  const OX = 800, OY = 672;   // #dio's own translate
+  let M = null, cur = null, f = 0, ft = 0, actT = 0, done = null, ready = false, imgEl = null, vid = null, waiting = false;
+  const cache = {};
+  function preload(src) { if (cache[src]) return cache[src]; const im = new Image(); im.src = src; cache[src] = im.decode().catch(() => {}); return cache[src]; }
+  function show(src) { if (imgEl) imgEl.setAttribute('href', src); }
   function set(name, oneShot) {
     if (!M || !M.loops[name]) name = 'polish';
     if (!M || !M.loops[name]) return;
-    cur = { name, L: M.loops[name], oneShot }; f = 0; ft = 0; playedOnce = false;
-    g.innerHTML = ''; const [x, y, w, h] = M.rect;
+    cur = { name, L: M.loops[name], oneShot }; f = 0; ft = 0; actT = 0; waiting = false;
+    const [x, y, w, h] = M.rect;
     if (cur.L.video) {
-      const fo = document.createElementNS(NS, 'foreignObject'); fo.setAttribute('x', x); fo.setAttribute('y', y); fo.setAttribute('width', w); fo.setAttribute('height', h);
-      vid = document.createElement('video'); vid.src = cur.L.video; vid.muted = true; vid.playsInline = true; vid.autoplay = true; vid.style.cssText = 'width:100%;height:100%';
-      vid.onended = () => { playedOnce = true; vid.currentTime = cur.L.hold || 0; vid.play(); finish(); };
+      g.innerHTML = '';
+      const fo = document.createElementNS(NS, 'foreignObject'); fo.setAttribute('x', x - OX); fo.setAttribute('y', y - OY); fo.setAttribute('width', w); fo.setAttribute('height', h);
+      vid = document.createElement('video'); vid.src = cur.L.video; vid.muted = true; vid.playsInline = true; vid.autoplay = !RM; vid.style.cssText = 'width:100%;height:100%';
+      vid.onended = () => { vid.currentTime = cur.L.hold || 0; vid.play(); finish(); };
       fo.appendChild(vid); g.appendChild(fo); imgEl = null;
     } else {
-      imgEl = document.createElementNS(NS, 'image'); imgEl.setAttribute('x', x); imgEl.setAttribute('y', y); imgEl.setAttribute('width', w); imgEl.setAttribute('height', h);
-      imgEl.setAttribute('href', cur.L.frames[0]); g.appendChild(imgEl); vid = null;
+      if (!imgEl || !imgEl.isConnected) {
+        g.innerHTML = ''; imgEl = document.createElementNS(NS, 'image');
+        imgEl.setAttribute('x', x - OX); imgEl.setAttribute('y', y - OY); imgEl.setAttribute('width', w); imgEl.setAttribute('height', h);
+        imgEl.setAttribute('preserveAspectRatio', 'none'); imgEl.setAttribute('pointer-events', 'none'); g.appendChild(imgEl); vid = null;
+        // taps land on his shape, not on the frame's transparent box (which would cover the shelf behind him)
+        const hd = M.head, hit = document.createElementNS(NS, 'path');
+        const hx = hd[0] + hd[2] / 2 - OX, hy = hd[1] - OY;
+        hit.setAttribute('d', `M${hx - hd[2] / 2} ${hy + hd[3] * .45} a${hd[2] / 2} ${hd[3] * .45} 0 1 1 ${hd[2]} 0 L${hx + 115} ${hy + hd[3] * 1.05} L${hx + 120} ${y + h - OY} L${hx - 120} ${y + h - OY} L${hx - 115} ${hy + hd[3] * 1.05} Z`);
+        hit.setAttribute('fill', 'transparent'); g.appendChild(hit);
+      }
+      cur.L.frames.forEach(preload);
+      f = RM ? Math.min(cur.L.hold || Math.floor(cur.L.frames.length / 2), cur.L.frames.length - 1) : 0;
+      show(cur.L.frames[f]);
     }
   }
   function finish() { if (done) { const d = done; done = null; d(true); } }
-  return {
+  const self = {
     kind: 'loops', el: g,
-    load(m) { M = m; ready = true; root.style.display = 'none'; set('polish'); (m.frames_preload || []).forEach(s => { const i = new Image(); i.src = s; }); },
-    fail() { console.warn('Dionysus loops manifest could not be read; keeping the drawn figure.'); g.remove(); },
+    load(m) {
+      M = m; const first = Object.values(m.loops).map(L => L.frames ? L.frames[0] : null).filter(Boolean);
+      return Promise.all(first.map(preload)).then(() => {
+        ready = true; const b = root.querySelector('#body'); if (b) b.style.display = 'none';
+        set('polish');
+        Object.values(m.loops).forEach(L => (L.frames || []).forEach(preload));
+      });
+    },
+    copyState() {},
+    fail() { g.remove(); },
     idle() { set('polish'); }, story() { set('story'); },
     perform(action, ctx) {
+      if (done) { const d = done; done = null; d(false); }
       if (!ready) return Promise.resolve(true);
       set(LOOP_OF[action] || 'reach', true);
+      if (RM) return Promise.resolve(true);
       return new Promise(res => { done = res; });
     },
     lookUp() {}, setLook() {},
     tick(t, dt) {
-      if (!cur || !imgEl) return;
+      if (!cur || !imgEl || RM) return;
       const fr = cur.L.frames, fps = cur.L.fps || 12;
+      if (cur.oneShot) actT += dt;
+      if (waiting && !cur.L.hold) return;              // waiting for your tap, still
       ft += dt; if (ft < 1 / fps) return; ft = 0; f++;
-      if (f >= fr.length) { playedOnce = true; f = cur.oneShot ? (cur.L.hold || 0) : 0; if (cur.oneShot) finish(); }
-      imgEl.setAttribute('href', fr[Math.min(f, fr.length - 1)]);
+      if (f >= fr.length) {
+        if (cur.oneShot && actT >= ACT_S) { waiting = true; finish(); f = cur.L.hold || 0; }
+        else f = waiting ? (cur.L.hold || 0) : 0;
+      }
+      show(fr[Math.min(f, fr.length - 1)]);
     },
     get acting() { return !!done; },
     headRect() {
@@ -298,4 +339,5 @@ function LoopDio(root) {
       return { left: a.x, top: a.y, right: b.x, bottom: b.y, width: b.x - a.x, height: b.y - a.y };
     },
   };
+  return self;
 }

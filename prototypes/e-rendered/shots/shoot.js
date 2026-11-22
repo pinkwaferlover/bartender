@@ -90,7 +90,7 @@ async function home(p) { await p.evaluate(() => proto.home()); await sleep(1100)
   await home(t);
 
   // the shelf
-  await t.click('#shelf'); await sleep(1300);
+  await t.click('#bottles > g >> nth=0'); await sleep(1300);   // a bottle: the shelf's centre is behind his head
   await shot(t, '05-shelf');
   await home(t);
   // the paste route
