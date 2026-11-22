@@ -40,3 +40,25 @@ Agreed in a grill with the owner on 22 November 2026 (`grill-with-docs`, questio
 Still true from the epic: a drink in three taps or fewer from home (barman's choice is one).
 
 Replaces story S11 ("one chosen look, ultra-minimal") in [`stories.md`](../stories.md).
+
+## Round 2: after the arena (22 November 2026)
+
+The arena (two Opus critics, one Opus judge, reports in [`arena/`](arena/)) picked prototype B. The owner agreed, and said B's style is closest to the feel, but not "SVGs everywhere", and D's 3D figure still looks wrong.
+
+| # | Decision |
+|---|---|
+| R1 | Build on B's layout, logic and zoom model. |
+| R2 | Make the art with Blender in a cloud session (the `bpy` Python package), not Blender MCP on the owner's PC. |
+| R3 | Dionysus is built on a rigged human base (MakeHuman's free CC0 plug-in), shaped to the Louvre Dionysus reference, with a marble finish. It is not a scanned statue. |
+| R4 | The app plays rendered loops of each action (polish, stir, pour, shake, reach, tell a story), not live 3D. |
+| R5 | Blender renders the whole scene in B's style: layout, palette and poster composition, with real light and depth. Touchable things are separate layers. |
+| R6 | Recipe steps: he acts out each step, then waits for the user's tap. No timer. |
+| R7 | Barman's choice draws only from drinks you can make, plus one marked "worth buying a bottle for". |
+| R8 | Honey comes from a honey jar the user can tap. He never touches the counter. |
+| R9 | The menu shows every drink. The ones you can't make are marked "needs Campari" and so on. |
+| R10 | On the recipe screen, Dionysus is sharp, beside the card. This replaces "blurred behind". |
+| R11 | Step size will be chosen by the owner on the tablet, using [`prototypes/step-size/`](../../prototypes/step-size/index.html). |
+| R12 | "Warm me up", "After dinner" and similar phrases are words he understands, not buttons. The four questions stay as they are. |
+| R13 | His body waits until the MakeHuman sites are allowed. The bar scene and app changes go first. |
+
+Grafts from the arena: the "paste from your own AI" route and the golden rim come from D. A talk search must reach a recipe in three taps or fewer (it takes 5 today). Bug fixes: "Here's what's closest" lists nothing (B `logic.js:136`); barman's choice falls back to all 34 drinks (B `logic.js:87`).

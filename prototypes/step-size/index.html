@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en-GB"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Step size test</title>
+<style>
+:root{--page:#0f0e10;--ink:#f0e7d8;--mute:#9d9488;--acc:#e2ae5c}
+html,body{margin:0;height:100%;background:var(--page);color:var(--ink);font-family:Inter,system-ui,sans-serif}
+main{min-height:100%;display:flex;flex-direction:column;justify-content:center;padding:24px 16px;box-sizing:border-box;cursor:pointer;user-select:none}
+.card{max-width:920px;margin:0 auto;width:100%}
+.n{color:var(--acc);font-weight:700;margin-right:.4em}
+.step{line-height:1.25;font-weight:500}
+.next{color:var(--mute);margin-top:1.2em;font-size:18px}
+.size{position:fixed;top:12px;left:16px;color:var(--acc);font:600 20px system-ui}
+.hint{position:fixed;bottom:12px;left:0;right:0;text-align:center;color:var(--mute);font-size:16px}
+</style></head><body>
+<div class="size" id="sz"></div>
+<main id="m"><div class="card">
+<div class="step" id="st"><span class="n">2</span>Add ice and stir for 30 seconds, until the glass is cold to the touch.</div>
+<div class="next">Next: strain into a chilled coupe</div>
+</div></main>
+<div class="hint">Stand a metre back. Tap anywhere for the next size. Pick the smallest you can read without leaning in.</div>
+<script>
+const sizes=[24,28,32,36,40,44,48];let i=0;
+const st=document.getElementById('st'),sz=document.getElementById('sz');
+function show(){st.style.fontSize=sizes[i]+'px';sz.textContent=sizes[i]+' px';}
+document.getElementById('m').addEventListener('click',()=>{i=(i+1)%sizes.length;show();});
+show();
+</script></body></html>
