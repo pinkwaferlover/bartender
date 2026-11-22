@@ -1,0 +1,128 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 760" width="900" height="760" font-family="system-ui, -apple-system, Segoe UI, sans-serif">
+  <title>Dionysus bar: the agreed journey</title>
+  <!-- The style block and markers are the key. Keep them; change only lanes, boxes and links. -->
+  <style>
+    .bg,.lane2{fill:#ffffff} .lane{fill:#f9fafb}
+    .h{font-size:16px;font-weight:600;fill:#111827}
+    .lh{font-size:13px;font-weight:700;fill:#374151;letter-spacing:.08em}
+    .t{font-size:13px;fill:#111827}
+    .s{font-size:11px;fill:#4b5563}
+    .div{stroke:#d1d5db;stroke-width:1}
+    .ex{fill:#f3f4f6;stroke:#6b7280;stroke-width:1.5}
+    .ag{fill:#dcfce7;stroke:#15803d;stroke-width:3.5}
+    .pr{fill:#fef3c7;stroke:#b45309;stroke-width:2;stroke-dasharray:7 4}
+    .ch{fill:#fef3c7;stroke:#b45309;stroke-width:2}
+    .rm{fill:#fee2e2;stroke:#b91c1c;stroke-width:2;stroke-dasharray:7 4}
+    .gone{text-decoration:line-through;fill:#6b7280}
+    .lex{stroke:#6b7280;stroke-width:1.5;fill:none}
+    .lpr{stroke:#b45309;stroke-width:2;stroke-dasharray:7 4;fill:none}
+    .mex{fill:#6b7280} .mpr{fill:#b45309}
+    .kag{fill:#15803d;font-weight:700;font-size:12px}
+    .kpr{fill:#b45309;font-weight:700;font-size:12px}
+    .krm{fill:#b91c1c;font-weight:700;font-size:12px}
+    @media (prefers-color-scheme: dark){
+      .bg,.lane2{fill:#111827} .lane{fill:#162033} .h,.t{fill:#f9fafb} .lh{fill:#d1d5db} .s{fill:#9ca3af} .div{stroke:#374151}
+      .ex{fill:#1f2937;stroke:#9ca3af} .ag{fill:#14532d;stroke:#4ade80}
+      .pr,.ch{fill:#422006;stroke:#fbbf24} .rm{fill:#450a0a;stroke:#f87171} .gone{fill:#9ca3af}
+      .lex{stroke:#9ca3af} .lpr{stroke:#fbbf24} .mex{fill:#9ca3af} .mpr{fill:#fbbf24}
+      .kag{fill:#4ade80} .kpr{fill:#fbbf24} .krm{fill:#f87171}
+    }
+  </style>
+  <defs>
+    <marker id="aex" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path class="mex" d="M0,0 L10,5 L0,10 z"/></marker>
+    <marker id="apr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path class="mpr" d="M0,0 L10,5 L0,10 z"/></marker>
+  </defs>
+  
+<rect class="bg" width="900" height="760"/>
+<text class="h" x="16" y="28">Dionysus bar: the agreed journey (final)</text>
+<rect class="ex" x="560" y="16" width="20" height="13" rx="3"/><text class="s" x="585" y="27">exists</text>
+<rect class="ag" x="660" y="16" width="20" height="13" rx="3"/><text class="s" x="685" y="27">agreed ✓</text>
+<rect class="lane" x="0" y="44" width="170" height="716"/>
+<text class="lh" x="85.0" y="66" text-anchor="middle">YOU</text>
+<rect class="lane2" x="170" y="44" width="450" height="716"/>
+<text class="lh" x="395.0" y="66" text-anchor="middle">THE BAR SCENE</text>
+<line class="div" x1="170" y1="44" x2="170" y2="760"/>
+<rect class="lane" x="620" y="44" width="280" height="716"/>
+<text class="lh" x="760.0" y="66" text-anchor="middle">YOUR BAR (DATA)</text>
+<line class="div" x1="620" y1="44" x2="620" y2="760"/>
+<line class="div" x1="0" y1="76" x2="900" y2="76"/>
+<rect class="ex" x="12" y="92" width="146" height="38" rx="8"/>
+<text class="t" x="22" y="115">Open the app</text>
+<line class="lex" x1="158" y1="111" x2="182" y2="111" marker-end="url(#aex)"/>
+<rect class="ag" x="186" y="92" width="420" height="52" rx="8"/>
+<text class="t" x="196" y="115">DIONYSUS fades to a neon sign; tablet landscape</text>
+<text class="s" x="196" y="133">muted hotel bar, near-black and cream, light and shade</text>
+<text class="kag" x="598" y="108" text-anchor="end">✓ Q2</text>
+<rect class="ag" x="186" y="160" width="420" height="52" rx="8"/>
+<text class="t" x="196" y="183">Dionysus polishes a glass with his fawn skin</text>
+<text class="s" x="196" y="201">painted marble · white marble · living  (setting)</text>
+<text class="kag" x="598" y="176" text-anchor="end">✓ Q8</text>
+<rect class="ag" x="636" y="160" width="252" height="52" rx="8"/>
+<text class="t" x="646" y="183">Coverage setting</text>
+<text class="s" x="646" y="201">classical · modest · cheeky (adult, off)</text>
+<text class="kag" x="880" y="176" text-anchor="end">✓ Q9</text>
+<rect class="ag" x="186" y="228" width="420" height="52" rx="8"/>
+<text class="t" x="196" y="251">Touchable = true colour; the rest muted</text>
+<text class="s" x="196" y="269">he touches only touchables, and patrons</text>
+<text class="kag" x="598" y="244" text-anchor="end">✓ Q7</text>
+<rect class="ex" x="12" y="296" width="146" height="38" rx="8"/>
+<text class="t" x="22" y="319">First visit</text>
+<line class="lex" x1="158" y1="315" x2="182" y2="315" marker-end="url(#aex)"/>
+<rect class="ag" x="186" y="296" width="420" height="52" rx="8"/>
+<text class="t" x="196" y="319">He asks: “What do you have?”</text>
+<text class="s" x="196" y="337">bottles and barware; shelf starts empty</text>
+<text class="kag" x="598" y="312" text-anchor="end">✓ Q5</text>
+<line class="lex" x1="606" y1="315" x2="632" y2="315" marker-end="url(#aex)"/>
+<rect class="ag" x="636" y="296" width="252" height="52" rx="8"/>
+<text class="t" x="646" y="319">Photos → prompt → list</text>
+<text class="s" x="646" y="337">own key, or paste into your AI</text>
+<text class="kag" x="880" y="312" text-anchor="end">✓ Q5</text>
+<rect class="ex" x="12" y="364" width="146" height="38" rx="8"/>
+<text class="t" x="22" y="387">Tap the shelf</text>
+<line class="lex" x1="158" y1="383" x2="182" y2="383" marker-end="url(#aex)"/>
+<rect class="ag" x="186" y="364" width="420" height="52" rx="8"/>
+<text class="t" x="196" y="387">Shelf of your bottles, brand-family art</text>
+<text class="s" x="196" y="405">safer art, no logos (issue #3)</text>
+<text class="kag" x="598" y="380" text-anchor="end">✓ Q6</text>
+<line class="lex" x1="606" y1="383" x2="632" y2="383" marker-end="url(#aex)"/>
+<rect class="ag" x="636" y="364" width="252" height="52" rx="8"/>
+<text class="t" x="646" y="387">Bottle → Style → Family</text>
+<text class="s" x="646" y="405">+ barware ticks</text>
+<text class="kag" x="880" y="380" text-anchor="end">✓ Q6</text>
+<rect class="ex" x="12" y="432" width="146" height="38" rx="8"/>
+<text class="t" x="22" y="455">Tap the menu</text>
+<line class="lex" x1="158" y1="451" x2="182" y2="451" marker-end="url(#aex)"/>
+<rect class="ag" x="186" y="432" width="420" height="52" rx="8"/>
+<text class="t" x="196" y="455">Zoom into the menu: spirit · feel · A–Z</text>
+<text class="s" x="196" y="473">4 feels, same words he uses</text>
+<text class="kag" x="598" y="448" text-anchor="end">✓ Q11</text>
+<rect class="ex" x="12" y="500" width="146" height="38" rx="8"/>
+<text class="t" x="22" y="523">Talk to him</text>
+<line class="lex" x1="158" y1="519" x2="182" y2="519" marker-end="url(#aex)"/>
+<rect class="ag" x="186" y="500" width="420" height="52" rx="8"/>
+<text class="t" x="196" y="523">Search = speaking to Dionysus</text>
+<text class="s" x="196" y="541">asks spirit · feel · moment · strength, stops early</text>
+<text class="kag" x="598" y="516" text-anchor="end">✓ Q3,11</text>
+<rect class="ex" x="12" y="568" width="146" height="38" rx="8"/>
+<text class="t" x="22" y="591">Tap Dionysus</text>
+<line class="lex" x1="158" y1="587" x2="182" y2="587" marker-end="url(#aex)"/>
+<rect class="ag" x="186" y="568" width="200" height="38" rx="8"/>
+<text class="t" x="196" y="591">He tells a story</text>
+<text class="kag" x="378" y="584" text-anchor="end">✓</text>
+<rect class="ag" x="396" y="568" width="210" height="52" rx="8"/>
+<text class="t" x="406" y="591">Barman’s choice</text>
+<text class="s" x="406" y="609">panther bats a dice</text>
+<text class="kag" x="598" y="584" text-anchor="end">✓</text>
+<rect class="ag" x="186" y="636" width="420" height="52" rx="8"/>
+<text class="t" x="196" y="659">Recipe in front; he makes it behind</text>
+<text class="s" x="196" y="677">thyrsus stirs, vines fetch, lemons appear; swaps tools</text>
+<text class="kag" x="598" y="652" text-anchor="end">✓ Q12</text>
+<rect class="ex" x="636" y="636" width="252" height="38" rx="8"/>
+<text class="t" x="646" y="659">34 recipes (no mocktails yet)</text>
+<rect class="ex" x="12" y="704" width="146" height="38" rx="8"/>
+<text class="t" x="22" y="727">Back</text>
+<line class="lex" x1="158" y1="723" x2="182" y2="723" marker-end="url(#aex)"/>
+<rect class="ag" x="186" y="704" width="420" height="38" rx="8"/>
+<text class="t" x="196" y="727">Zoom back out, always to the bar</text>
+<text class="kag" x="598" y="720" text-anchor="end">✓</text>
+</svg>

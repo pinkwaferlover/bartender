@@ -18,7 +18,7 @@ Updated 21 November 2026.
 | S8 | **Example bar for anyone who clones it** | Fresh clone works with the example; README: photograph, run the prompt, load the file | 1 |
 | S9 | **Home Assistant** later | Later: build the app first | — |
 | S10 | **Mark a bottle as run out** from the tablet | Lists update at once and the change survives a reload | 3 |
-| S11 | **One chosen look**, ultra-minimal, image first | One look chosen from the drawn options and kept on every screen | 1 |
+| S11 | **The bar scene**: Dionysus behind a muted hotel bar, touchable things in colour (replaces "ultra-minimal", 22 Nov 2026) | Matches [`process/dionysus-journey.md`](process/dionysus-journey.md); one prototype chosen | 1 |
 | S12 | **A–Z finder**: a radial alphabet that magnifies under the finger or mouse | Letter under the pointer largest, neighbours smaller with distance; letting go lists that letter's drinks | 1 |
 | S13 | **Search** with a mic and cycling suggestions | Every suggestion and result shows the drink's picture, its spirit and its feel | 1 |
 | S14 | **Prep time as a pie**: the longest recipe is a full pie; shake and stir steps show their seconds | No countdown: it suggests time for the right dilution, it isn't a race | 1 |
