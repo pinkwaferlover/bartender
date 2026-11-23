@@ -34,15 +34,36 @@ function makeDio(root) {
   const q = new URLSearchParams(location.search);
   const svgDio = SvgDio(root);
   if (q.get('dio') === 'svg') { svgDio.shown(true); return svgDio; }
-  // B's figure stays hidden (it acts on, unseen, so a step in progress keeps its promise) while the loops load.
-  // It is shown if they fail, or haven't shown their first frames after FALLBACK_MS; hidden again once they do.
+  // B's figure is hidden from the start (index.html) and acts on, unseen, while the loops load. It is shown if they
+  // fail, or haven't shown their first frames after FALLBACK_MS; hidden again once they do. At the takeover the
+  // loops pick up what it was doing: polishing, a story, or a recipe step (whose promise they then keep).
   let cur = svgDio; const loops = LoopDio(root);
+  let doing = { k: 'idle' };   // the last thing asked of him; for a step: action, ctx and the app's resolver
   const timer = setTimeout(() => { if (cur === svgDio) svgDio.shown(true); }, FALLBACK_MS);
   fetch(q.get('loops') || 'dio-loops.json').then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
-    .then(m => loops.load(m)).then(() => { clearTimeout(timer); svgDio.shown(false, true); loops.copyState(cur); cur = loops; })
+    .then(m => loops.load(m)).then(() => {
+      clearTimeout(timer); svgDio.shown(false, true); cur = loops;
+      if (doing.k === 'perform') {
+        const d = doing, p = loops.perform(d.action, d.ctx);
+        if (svgDio.acting) p.then(v => { if (doing === d) d.res(v); });   // still acting: the loops finish the step
+      } else loops[doing.k]();
+    })
     .catch(e => { clearTimeout(timer); console.warn('Dionysus loops not loaded (' + e.message + '); showing the drawn figure.'); loops.fail(); svgDio.shown(true); });
-  const api = {};
-  ['idle', 'story', 'perform', 'lookUp', 'setLook', 'tick', 'headRect'].forEach(k => { api[k] = (...a) => { if (k === 'setLook' || k === 'lookUp') { svgDio[k](...a); loops[k](...a); } return cur[k](...a); }; });
+  const drop = () => { if (doing.res) doing.res(false); };   // a step begun on the drawn figure, superseded
+  const api = {
+    idle() { drop(); doing = { k: 'idle' }; return cur.idle(); },
+    story() { drop(); doing = { k: 'story' }; return cur.story(); },
+    perform(action, ctx) {
+      drop();
+      if (cur === loops) { doing = { k: 'perform', action, ctx }; return loops.perform(action, ctx); }
+      const d = { k: 'perform', action, ctx }; doing = d;
+      return new Promise(res => { d.res = v => { if (d.res) { d.res = null; res(v); } }; svgDio.perform(action, ctx).then(v => { if (doing === d && cur === svgDio) d.res(v); }); });
+    },
+    lookUp(on) { svgDio.lookUp(on); loops.lookUp(on); },
+    setLook(L) { svgDio.setLook(L); loops.setLook(L); },
+    tick(t, dt) { return cur.tick(t, dt); },
+    headRect() { return cur.headRect(); },
+  };
   Object.defineProperty(api, 'kind', { get: () => cur.kind });
   Object.defineProperty(api, 'acting', { get: () => cur.acting });
   Object.defineProperty(api, 'el', { get: () => cur.el });
@@ -290,62 +311,77 @@ function LoopDio(root) {
   let M = null, cur = null, f = 0, ft = 0, actT = 0, done = null, ready = false, imgEl = null, vid = null, waiting = false;
   let fin = 'painted', want = 'painted', S = null;   // finish shown, finish asked for, its loop set
   const cache = {};
-  function preload(src) { if (cache[src]) return cache[src]; const im = new Image(); im.src = src; cache[src] = im.decode().catch(() => {}); return cache[src]; }
-  const setOf = k => (M && k !== 'painted' && M.finishes && M.finishes[k] && M.finishes[k].loops) || (M && M.loops) || {};
+  // resolves to true once decoded, false if the frame can't load (not cached, so a later call tries again)
+  function preload(src) {
+    if (cache[src]) return cache[src];
+    const im = new Image(); im.src = src;
+    return cache[src] = im.decode().then(() => true, () => { delete cache[src]; return false; });
+  }
+  const allOk = srcs => Promise.all(srcs.map(preload)).then(r => r.every(Boolean));
   const finOf = k => (M && k !== 'painted' && M.finishes && M.finishes[k] && M.finishes[k].loops) ? k : 'painted';
-  const resolve = (set, name) => set[name] ? name : set[LOOP_FALLBACK[name]] ? LOOP_FALLBACK[name] : 'polish';
-  const firstFrames = set => Object.values(set).map(L => L.frames ? L.frames[0] : null).filter(Boolean);
-  const allFrames = (set, name) => { const L = set[resolve(set, name)]; return L && L.frames ? L.frames : []; };
-  function show(src) { if (imgEl) imgEl.setAttribute('href', src); }
+  const setOf = k => k === 'painted' ? M.loops : M.finishes[k].loops;
+  // the loop a name plays in a set: itself, its LOOP_FALLBACK, the default finish's of either, then polish
+  function pick(set, name) {
+    for (const n of [name, LOOP_FALLBACK[name]].filter(Boolean)) { if (set[n]) return { name: n, L: set[n] }; if (M.loops[n]) return { name: n, L: M.loops[n] }; }
+    return set.polish ? { name: 'polish', L: set.polish } : M.loops.polish ? { name: 'polish', L: M.loops.polish } : null;
+  }
   const still = L => Math.min(L.hold || Math.floor(L.frames.length / 2), L.frames.length - 1);
+  const startF = L => RM ? still(L) : 0;   // the frame set() shows first
+  const firstFrames = set => DIO_LOOPS.map(n => pick(set, n)).filter(p => p && p.L.frames).map(p => p.L.frames[startF(p.L)]);
+  const framesFor = (set, name) => { const p = pick(set, name); return p && p.L.frames ? (RM ? [p.L.frames[startF(p.L)]] : p.L.frames) : []; };
+  function show(src) { if (imgEl) imgEl.setAttribute('href', src); }
+  function hitPath() {   // taps land on his shape, not on the frame's transparent box (which would cover the shelf behind him)
+    const [, y, , h] = M.rect, hd = M.head, hit = document.createElementNS(NS, 'path');
+    const hx = hd[0] + hd[2] / 2 - OX, hy = hd[1] - OY;
+    hit.setAttribute('d', `M${hx - hd[2] / 2} ${hy + hd[3] * .45} a${hd[2] / 2} ${hd[3] * .45} 0 1 1 ${hd[2]} 0 L${hx + 115} ${hy + hd[3] * 1.05} L${hx + 120} ${y + h - OY} L${hx - 120} ${y + h - OY} L${hx - 115} ${hy + hd[3] * 1.05} Z`);
+    hit.setAttribute('fill', 'transparent'); g.appendChild(hit);
+    const tmp = root.querySelector('#dioHit'); if (tmp) tmp.style.display = 'none';   // index.html's stand-in while loading
+  }
   function build(L) {   // the <image> (or video) for a loop
     const [x, y, w, h] = M.rect;
     if (L.video) {
       g.innerHTML = '';
       const fo = document.createElementNS(NS, 'foreignObject'); fo.setAttribute('x', x - OX); fo.setAttribute('y', y - OY); fo.setAttribute('width', w); fo.setAttribute('height', h);
+      fo.setAttribute('pointer-events', 'none');
       vid = document.createElement('video'); vid.src = L.video; vid.muted = true; vid.playsInline = true; vid.autoplay = !RM; vid.style.cssText = 'width:100%;height:100%';
-      vid.onended = () => { vid.currentTime = cur.L.hold || 0; vid.play(); finish(); };
-      fo.appendChild(vid); g.appendChild(fo); imgEl = null;
+      if (RM) vid.onloadedmetadata = () => { vid.currentTime = L.hold || 0; vid.pause(); };   // a single still
+      else vid.onended = () => { vid.currentTime = cur.L.hold || 0; vid.play(); finish(); };
+      fo.appendChild(vid); g.appendChild(fo); imgEl = null; hitPath();
     } else if (!imgEl || !imgEl.isConnected) {
       g.innerHTML = ''; imgEl = document.createElementNS(NS, 'image');
       imgEl.setAttribute('x', x - OX); imgEl.setAttribute('y', y - OY); imgEl.setAttribute('width', w); imgEl.setAttribute('height', h);
       imgEl.setAttribute('preserveAspectRatio', 'none'); imgEl.setAttribute('pointer-events', 'none'); g.appendChild(imgEl); vid = null;
-      // taps land on his shape, not on the frame's transparent box (which would cover the shelf behind him)
-      const hd = M.head, hit = document.createElementNS(NS, 'path');
-      const hx = hd[0] + hd[2] / 2 - OX, hy = hd[1] - OY;
-      hit.setAttribute('d', `M${hx - hd[2] / 2} ${hy + hd[3] * .45} a${hd[2] / 2} ${hd[3] * .45} 0 1 1 ${hd[2]} 0 L${hx + 115} ${hy + hd[3] * 1.05} L${hx + 120} ${y + h - OY} L${hx - 120} ${y + h - OY} L${hx - 115} ${hy + hd[3] * 1.05} Z`);
-      hit.setAttribute('fill', 'transparent'); g.appendChild(hit);
-      const tmp = root.querySelector('#dioHit'); if (tmp) tmp.style.display = 'none';   // index.html's stand-in while loading
+      hitPath();
     }
   }
   function set(name, oneShot) {
     if (!M) return;
-    const real = resolve(S, name); if (!S[real]) return;
-    cur = { name, L: S[real], oneShot }; f = 0; ft = 0; actT = 0; waiting = false;
+    const p = pick(S, name); if (!p) return;
+    cur = { name, L: p.L, real: p.name, oneShot }; f = 0; ft = 0; actT = 0; waiting = false;
     build(cur.L);
-    if (cur.L.frames) { cur.L.frames.forEach(preload); f = RM ? still(cur.L) : 0; show(cur.L.frames[f]); }
+    if (cur.L.frames) { if (!RM) cur.L.frames.forEach(preload); f = startF(cur.L); show(cur.L.frames[f]); }
   }
   // swap to the frame set of `k` in place, keeping the loop, its frame and its step state (oneShot, waiting, actT)
   function swap(k) {
     fin = k; S = setOf(k);
     if (!cur) return;
-    const L = S[resolve(S, cur.name)]; if (!L) return;
-    const wasVideo = !!cur.L.video; cur.L = L;
-    if (L.video || wasVideo) { build(L); if (L.video) return; }
-    f = RM ? still(L) : Math.min(f, L.frames.length - 1); show(L.frames[f]);
+    const p = pick(S, cur.name); if (!p) return;
+    const wasVideo = !!cur.L.video; cur.L = p.L; cur.real = p.name;
+    if (p.L.video || wasVideo) { build(p.L); if (p.L.video) return; }
+    f = RM ? still(p.L) : Math.min(f, p.L.frames.length - 1); show(p.L.frames[f]);
   }
   function switchTo(k) {   // lazy: wait for the new finish's frames for the current loop, then swap
     want = k;
-    if (!ready) return;
+    if (!ready) return;     // load() picks it up
     k = finOf(k); if (k === fin) return;
     const T = setOf(k);
-    const need = () => cur ? allFrames(T, cur.name) : [];
     firstFrames(T).forEach(preload);
-    const wait = () => { const n = need(), name = cur && cur.name; return Promise.all(n.map(preload)).then(() => (cur && cur.name !== name) ? wait() : null); };
-    wait().then(() => {
+    const wait = () => { const name = cur && cur.name; return allOk(cur ? framesFor(T, name) : []).then(ok => (cur && cur.name !== name) ? wait() : ok); };
+    wait().then(ok => {
       if (finOf(want) !== k) return;    // asked for another finish meanwhile
+      if (!ok) { console.warn(`Dionysus: the ${k} frames didn't load; staying ${fin}.`); return; }
       swap(k);
-      Object.values(T).forEach(L => (L.frames || []).forEach(preload));
+      if (!RM) Object.values(T).forEach(L => (L.frames || []).forEach(preload));
     });
   }
   function finish() { if (done) { const d = done; done = null; d(true); } }
@@ -353,13 +389,14 @@ function LoopDio(root) {
     kind: 'loops', el: g,
     load(m) {
       M = m; fin = finOf(want); S = setOf(fin);
-      return Promise.all(firstFrames(S).map(preload)).then(() => {
+      return allOk(firstFrames(S)).then(ok => {
+        if (!ok) throw new Error('first frames missing');
         ready = true;
         set('polish');
-        Object.values(S).forEach(L => (L.frames || []).forEach(preload));
+        if (!RM) Object.values(S).forEach(L => (L.frames || []).forEach(preload));
+        if (finOf(want) !== fin) switchTo(want);   // a setLook that came while the first frames loaded
       });
     },
-    copyState() {},
     fail() { g.remove(); },
     idle() { set('polish'); }, story() { set('story'); },
     perform(action, ctx) {
@@ -372,7 +409,7 @@ function LoopDio(root) {
     lookUp() {},
     setLook(L) { switchTo((L && L.finish) || 'painted'); },
     get finish() { return fin; },
-    get loop() { return cur ? resolve(S, cur.name) : null; },
+    get loop() { return cur ? cur.real : null; },
     tick(t, dt) {
       if (!cur || !imgEl || RM) return;
       const fr = cur.L.frames, fps = cur.L.fps || 12;
