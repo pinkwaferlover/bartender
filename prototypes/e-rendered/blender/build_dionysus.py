@@ -199,7 +199,7 @@ def _ao(n, L, col_, strength, dist):
     return mm.outputs['Result']
 
 
-def marble_material(name='marble', paint=True, lo='#c2a690', hi='#ecd6c2', rough=0.38, hem=False, ao=0.0,
+def marble_material(name='marble', paint=True, lo='#cbb7a6', hi='#f2e6da', rough=0.38, hem=False, ao=0.0,
                     ao_dist=0.06, sss=(0.12, 0.08, 0.06), coat=0.15):
     m = bpy.data.materials.new(name); m.use_nodes = True
     nt = m.node_tree; n = nt.nodes; L = nt.links
@@ -1041,11 +1041,11 @@ def face(smile=0.0, open_=0.0, brow=(0.0, 0.0), wink=(0.0, 0.0), look=(0.0, 0.0)
         nudge('levator05.' + side, (sx * 0.006 * sm, 0.005 * sm, 0.010 * sm - 0.002 * open_))     # the corners up, out and back
         nudge('oris03.' + side, (sx * 0.0035 * sm, 0.0025 * sm, 0.004 * sm))
         nudge('oris07.' + side, (sx * 0.004 * sm, 0.003 * sm, 0.003 * sm - 0.002 * open_))
-        nudge('risorius03.' + side, (sx * 0.003 * sm, -0.003 * sm, 0.0065 * sm))  # the cheeks lift
+        nudge('risorius03.' + side, (sx * 0.0035 * sm, -0.0035 * sm, 0.0085 * sm))  # the cheeks lift
         nudge('levator06.' + side, (sx * 0.0008 * sm, 0, 0.0015 * sm))
         nudge('oculi01.' + side, (0, -0.0012 * brow[bi], 0.0075 * brow[bi]))        # brows up
         rot('orbicularis03.' + side, (1, 0, 0), 30 * wink[bi] + 3 * squint - 5 * brow[bi] - 4)   # upper lid down (+)
-        rot('orbicularis04.' + side, (1, 0, 0), -(14 * squint + 16 * wink[bi]))       # lower lid up (-)
+        rot('orbicularis04.' + side, (1, 0, 0), -(14 * squint + 5 * sm + 16 * wink[bi]))       # a smile narrows the eyes       # lower lid up (-)
         rot('eye.' + side, (0, 0, 1), look[0]); rot('eye.' + side, (1, 0, 0), -look[1])
     nudge('oris05', (0, 0.0015 * sm, 0.0012 * sm))
     nudge('oris01', (0, 0.002 * sm, -0.0012 * open_))
@@ -1360,12 +1360,13 @@ def L_stir(t, pr):
     end of each loop (and the still he waits on, frame 0) a delighted look up at you."""
     a = 2 * math.pi * t * 2
     g = 1 - bump(t, 0.08, 0.72)                       # 1 around the loop's ends: the grin he waits on
-    body_pose(bend=7 + 1.0 * math.sin(a), twist=-4 + 1.5 * math.sin(a + 0.6), lean=-1 + 1.0 * math.cos(a),
-              pitch=20 - 16 * g, yaw=-3 + 2 * math.sin(a) + 4 * g, roll=1 + 6 * g, breath=0.5 + 0.5 * math.sin(a / 2))
-    face(smile=0.35 + 0.6 * g, open_=0.25 * g, brow=(0.5 * g, 0.4 * g), look=(3 * g, 16 * g - 8 * (1 - g)), squint=0.2 + 0.35 * g)
+    body_pose(bend=7 + 2.0 * math.sin(a - 0.5), twist=-4 + 4 * math.sin(a - 0.7), lean=-1 + 2.5 * math.cos(a - 0.7),
+              pitch=20 - 16 * g + 3.5 * math.sin(2 * a), yaw=-3 + 4 * math.sin(a - 0.4) + 4 * g, roll=1 + 6 * g + 2 * math.cos(a - 0.4),
+              breath=0.5 + 0.5 * math.sin(a / 2))
+    face(smile=0.35 + 0.6 * g, open_=0.22 * g, brow=(0.5 * g, 0.4 * g), look=(3 * g, 16 * g - 8 * (1 - g)), squint=0.2 + 0.6 * g)
     free_left(t, math.sin(a / 2))
-    tip = S2W(DRINK[0] + 5 * math.cos(a), DRINK[1] - 18 + 2 * math.sin(a), D_HAND + 0.04 * math.sin(a))
-    fist = S2W(CX - 82 + 10 * math.cos(a - 0.4), 540 + 5 * math.sin(a - 0.4), D_HAND - 0.15)
+    tip = S2W(DRINK[0] + 8 * math.cos(a), DRINK[1] - 20 + 3 * math.sin(a), D_HAND - 0.2 + 0.05 * math.sin(a))
+    fist = S2W(CX - 82 + 17 * math.cos(a - 0.4), 540 + 9 * math.sin(a - 0.4), D_HAND - 0.3)
     clavicle_follow('R', fist); set_pole('R', (2.8, 1.6, -3.0))
     grip('R', 0.9, 0.8)
     held_axis_place('R', fist, tip, pr['thyrsus'])
@@ -1382,7 +1383,7 @@ def L_pour(t, pr):
     body_pose(bend=5 + 3 * smoothstep(0.1, 0.5, t), twist=-6 + 3 * smoothstep(0.2, 0.6, t), lean=-2 * smoothstep(0.1, 0.4, t),
               pitch=14 + 6 * smoothstep(0.1, 0.5, t) - 14 * g, yaw=-6 + 3 * g + 1.5 * math.sin(2 * math.pi * (t - 0.74) / 0.26) * g,
               roll=7 * g, breath=0.5 + 0.5 * math.sin(2 * math.pi * t))
-    face(smile=0.4 + 0.6 * g, open_=0.35 * g, brow=(0.55 * g, 0.5 * g), look=(5 * g, 14 * g - 6 * (1 - g)), squint=0.2 + 0.4 * g)
+    face(smile=0.4 + 0.6 * g, open_=0.3 * g, brow=(0.55 * g, 0.5 * g), look=(5 * g, 14 * g - 6 * (1 - g)), squint=0.2 + 0.65 * g)
     free_left(t)
     fist = S2W(hx, hy, D_HAND - 0.1)
     ang = math.radians(108 * tip)
@@ -1400,24 +1401,27 @@ def L_pour(t, pr):
         cu_ = curve_tube('p_stream', [mouth_ + Vector((0.02, 0, -0.02)), mid + Vector((wob, 0, 0)), bot], 0.028, taper_curve('stream', [(0, 1), (0.4, 0.7), (1, 0.55)]), M_POUR, 2)
 
 
+SHK = 1.3   # the shaker, larger so it reads
+
+
 def L_shake(t, pr):
     """Recipe step (shake): the shaker on a diagonal in front of his chest, the tin in his right hand, the cap
     under his left palm toward his left shoulder; two hard shakes a loop along its length, the body
     following a beat behind; a grin throughout."""
     sk = track(t * 2 % 1.0, [(0.0, -1.0), (0.1, -1.12), (0.42, 1.0), (0.52, 1.1), (0.86, -0.95)])
     lag = track((t * 2 - 0.07) % 1.0, [(0.0, -1.0), (0.1, -1.12), (0.42, 1.0), (0.52, 1.1), (0.86, -0.95)])
-    body_pose(bend=4 + 1.2 * lag, twist=2 + 2.5 * lag, lean=1.5 * lag, pitch=8 - 3 * lag, yaw=-8 + 2 * lag,
-              roll=6 + 2 * lag, breath=0.6)
-    face(smile=0.85, open_=0.3 + 0.12 * lag, brow=(0.6, 0.55), look=(-6, 12), squint=0.5)
+    body_pose(bend=4 + 3 * lag, twist=2 + 6 * lag, lean=4 * lag, pitch=8 - 6 * lag, yaw=-8 + 4 * lag,
+              roll=6 + 4 * lag, breath=0.6)
+    face(smile=0.9, open_=0.28 + 0.12 * lag, brow=(0.6, 0.55), look=(-6, 12), squint=0.75)
     axis = Vector((0.62, -0.3, 1.0)).normalized()
-    c = S2W(CX + 2 + 13 * sk, 548 - 15 * sk, D_HAND - 0.1)
-    sh = pr['shaker']; base = c - axis * 0.45
-    sh.matrix_world = axis_matrix(base, axis); upd()
+    c = S2W(CX + 4 + 24 * sk, 560 - 19 * sk, D_HAND - 0.1)
+    sh = pr['shaker']; base = c - axis * 0.45 * SHK
+    sh.matrix_world = axis_matrix(base, axis) @ Matrix.Diagonal((SHK, SHK, SHK, 1)); upd()
     set_pole('R', (2.8, 1.4, -3.2)); set_pole('L', (2.8, 1.6, -3.0))
     ex = axis.cross(Vector((0, -1, 0))).normalized()
     if ex.x > 0: ex = -ex                                   # across the shaker, toward his right and down
-    rp = base + axis * 0.28 + ex * 0.24
-    lp = base + axis * 0.99
+    rp = base + axis * 0.28 * SHK + ex * (0.24 * SHK)
+    lp = base + axis * (0.9 * SHK + 0.09)
     clavicle_follow('R', rp); clavicle_follow('L', lp)
     place_palm('R', rp, face=-ex, along=axis * 0.5 + Vector((0, -0.6, 0.2)), wrist_amount=0.85)
     place_palm('L', lp, face=-axis, along=Vector((-0.6, -0.5, 0.1)), wrist_amount=0.85)
@@ -1425,43 +1429,42 @@ def L_shake(t, pr):
 
 
 def L_reach(t, pr):
-    """Recipe step (lemon, mint, ice, garnish): he looks up, reaches up and back to the shelf, takes a small
-    bottle by the neck, brings it down in front of him and holds it out over the counter, delighted."""
-    k = [(0.0, (CX - 70, 600, -0.9)), (0.07, (CX - 74, 612, -0.95)), (0.28, (CX - 162, 365, 0.25)), (0.38, (CX - 170, 338, 0.45), 'h'),
-         (0.45, (CX - 168, 342, 0.45), 'h'), (0.56, (CX - 178, 440, -0.4)), (0.67, (CX - 92, 530, -1.25)), (0.73, (CX - 62, 546, -1.32)),
-         (0.79, (CX - 66, 538, -1.3), 'h'), (0.9, (CX - 67, 534, -1.3)), (1.0, (CX - 66, 538, -1.3), 'h')]
+    """Recipe step (lemon, mint, ice, garnish): he looks up, reaches up and back to the shelf where a small
+    bottle stands, closes his hand on its neck, brings it down in a wide arc and holds it out, delighted."""
+    k = [(0.0, (CX - 70, 600, -0.9)), (0.06, (CX - 74, 612, -0.95)), (0.25, (CX - 162, 350, 0.25)), (0.34, (CX - 170, 324, 0.45), 'h'),
+         (0.44, (CX - 169, 326, 0.45), 'h'), (0.56, (CX - 176, 412, -0.3)), (0.67, (CX - 132, 496, -0.95)), (0.76, (CX - 76, 538, -1.3)),
+         (0.81, (CX - 63, 546, -1.33)), (0.857, (CX - 66, 538, -1.3), 'h'), (0.93, (CX - 67, 534, -1.3)), (1.0, (CX - 66, 538, -1.3), 'h')]
     hx, hy, hd = track(t, k, cyc=False)
-    upv = bump(t, 0.05, 0.6) ** 0.7
-    g = smoothstep(0.66, 0.8, t)
+    upv = bump(t, 0.04, 0.72) ** 0.7
+    g = smoothstep(0.7, 0.85, t)
     body_pose(bend=3 - 5 * upv, twist=-4 - 12 * upv, lean=-5 * upv, pitch=10 - 32 * upv - 10 * g, yaw=-6 - 16 * upv + 6 * g,
               roll=-4 * upv + 7 * g, breath=0.5 + 0.5 * math.sin(2 * math.pi * t))
-    face(smile=0.35 + 0.15 * upv + 0.5 * g, open_=0.1 * upv + 0.3 * g, brow=(0.3 * upv + 0.55 * g, 0.3 * upv + 0.5 * g),
-         look=(-8 * upv + 5 * g, 14 * upv + 12 * g), squint=0.15 + 0.4 * g)
+    face(smile=0.35 + 0.15 * upv + 0.55 * g, open_=0.1 * upv + 0.28 * g, brow=(0.3 * upv + 0.55 * g, 0.3 * upv + 0.5 * g),
+         look=(-8 * upv + 5 * g, 14 * upv + 12 * g), squint=0.15 + 0.6 * g)
     free_left(t)
     fist = S2W(hx, hy, hd)
-    closed = smoothstep(0.38, 0.45, t)
+    closed = smoothstep(0.31, 0.41, t)
     clavicle_follow('R', fist); set_pole('R', (3.0, 2.4, -2.0 - 1.4 * (1 - upv)))
-    b_ = pr['small']
+    b_ = pr['small']; b_.hide_render = False
     up_dir = Vector((0.15 * (1 - g), 0.1, 1)).normalized()
-    if closed < 0.5:      # not holding it yet: the open hand, fingers up, palm toward the shelf
-        b_.hide_render = True
-        place_palm('R', fist, face=Vector((0.8, 0.55, -0.1)), along=Vector((-0.15, 0.25, 1)), wrist_amount=0.9)
-        grip('R', 0.35 + 0.5 * closed, 0.3 + 0.4 * closed)
+    grip('R', 0.3 + 0.55 * closed, 0.25 + 0.45 * closed)
+    if t < 0.38:     # on the shelf, upright, where his hand will close on its neck
+        held_axis_place('R', fist, axis=Vector((0.1, 0.25, 1)))
+        shelf_at = S2W(CX - 170, 324, 0.45)
+        b_.matrix_world = axis_matrix(shelf_at - Vector((0, 0, 1)) * 0.62, Vector((0, 0, 1)))
     else:
-        b_.hide_render = False
-        grip('R', 0.85, 0.7)
-        held_axis_place('R', fist, root=b_, axis=up_dir, offset=0.62)
+        held_axis_place('R', fist, root=b_, axis=up_dir if t > 0.44 else Vector((0, 0, 1)).lerp(up_dir, 0.0), offset=0.62)
 
 
 def L_story(t, pr):
     """Tap him: he tells a story: eyes up to you, brows raised, an open right hand turning out as he talks, the
     left hand lifting a little, head nodding and tilting, mouth moving."""
     a = 2 * math.pi * t
-    body_pose(bend=1 + 1.5 * math.sin(a), twist=-3 + 3 * math.sin(a), lean=1.5 * math.sin(a + 1.2), pitch=-2 + 5 * math.sin(2 * a + 0.5),
+    body_pose(bend=1 + 2.5 * math.sin(a), twist=-3 + 7 * math.sin(a), lean=3.5 * math.sin(a + 1.2), pitch=-2 + 5 * math.sin(2 * a + 0.5),
               yaw=6 * math.sin(a + 0.3), roll=5 * math.sin(a + 0.9), breath=0.5 + 0.5 * math.sin(a))
     talk = 0.5 + 0.5 * math.sin(a * 4 + 0.3) * math.sin(a * 2 + 1.1)
-    face(smile=0.55 + 0.2 * math.sin(a), open_=0.15 + 0.35 * talk, brow=(0.55 + 0.35 * math.sin(a * 2), 0.5 + 0.3 * math.sin(a * 2 + 0.3)),
-         look=(3 * math.sin(a), 14), squint=0.2)
+    face(smile=0.5 + 0.35 * (1 - talk), open_=0.12 + 0.35 * talk, brow=(0.8 + 0.2 * math.sin(a * 2), 0.75 + 0.2 * math.sin(a * 2 + 0.3)),
+         look=(3 * math.sin(a), 19), squint=0.15 + 0.3 * (1 - talk))
     rx = track(t, [(0.0, (CX - 92, 560)), (0.22, (CX - 146, 522)), (0.45, (CX - 118, 548)), (0.7, (CX - 156, 532)), (0.86, (CX - 110, 556))])
     rp = S2W(rx[0], rx[1], D_HAND + 0.1)
     turn = 0.5 + 0.5 * math.sin(a * 2)
@@ -1479,22 +1482,24 @@ def L_dip(t, pr):
     the counter, dipped, lifted dripping and carried over the glass, where he holds it as the honey runs
     (from `hold`), pleased with himself. The jar is the app's own layer; only his staff tip goes into it."""
     jx, jy = JAR_MOUTH
-    k = [(0.0, (CX - 100, 560, CX - 104, 640)), (0.07, (CX - 104, 566, CX - 108, 646)),
-         (0.27, (jx - 16, 516, jx + 2, jy - 6)), (0.34, (jx - 18, 530, jx, jy + 14), 'h'),
-         (0.4, (jx - 17, 524, jx + 1, jy + 8)), (0.46, (jx - 18, 532, jx, jy + 16), 'h'),
-         (0.62, (jx + 14, 486, jx + 34, jy - 36)), (0.76, (CX - 84, 522, DRINK[0] - 8, DRINK[1] - 66)),
-         (0.82, (CX - 86, 526, DRINK[0] - 10, DRINK[1] - 62), 'h'), (0.91, (CX - 85, 524, DRINK[0] - 9, DRINK[1] - 64)),
-         (1.0, (CX - 86, 526, DRINK[0] - 10, DRINK[1] - 62), 'h')]
-    fx, fy, tx, ty = track(t, k, cyc=False)
-    reach = bump(t, 0.05, 0.75) ** 0.6
-    g = smoothstep(0.74, 0.84, t)
+    # (fist x, fist y, staff angle from straight down toward his left, fist-to-tip length), world units
+    k = [(0.0, (CX - 100, 560, 4, 80)), (0.06, (CX - 104, 566, 4, 80)),
+         (0.22, (jx - 4, 500, 8, 78)), (0.3, (jx - 6, 530, 7, 84), 'h'), (0.36, (jx - 4, 522, 9, 82)), (0.42, (jx - 6, 531, 7, 84), 'h'),
+         (0.52, (jx + 4, 478, 12, 80)), (0.6, (jx + 44, 466, 24, 84)), (0.68, (CX - 112, 482, 38, 94)),
+         (0.75, (CX - 92, 508, 48, 114)), (0.786, (CX - 90, 516, 50, 123), 'h'), (0.89, (CX - 89, 512, 50, 122)),
+         (1.0, (CX - 90, 516, 50, 123), 'h')]
+    fx, fy, ang, ln_ = track(t, k, cyc=False)
+    tx, ty = fx + ln_ * math.sin(math.radians(ang)), fy + ln_ * math.cos(math.radians(ang))
+    reach = bump(t, 0.04, 0.7) ** 0.6
+    g = smoothstep(0.66, 0.78, t)
     body_pose(bend=5 + 6 * reach, twist=-3 - 5 * reach + 3 * g, lean=-1.5 * reach, pitch=14 + 10 * reach - 16 * g,
               yaw=-5 - 9 * reach + 8 * g, roll=-2 * reach + 7 * g, breath=0.5 + 0.5 * math.sin(2 * math.pi * t))
-    face(smile=0.4 + 0.15 * reach + 0.45 * g, open_=0.1 * reach + 0.3 * g, brow=(0.2 * reach + 0.6 * g, 0.2 * reach + 0.5 * g),
-         look=(-10 * reach * (1 - g) + 5 * g, -8 * reach * (1 - g) + 14 * g), squint=0.2 + 0.35 * g)
+    face(smile=0.4 + 0.15 * reach + 0.5 * g, open_=0.1 * reach + 0.28 * g, brow=(0.2 * reach + 0.6 * g, 0.2 * reach + 0.5 * g),
+         look=(-10 * reach * (1 - g) + 5 * g, -8 * reach * (1 - g) + 14 * g), squint=0.2 + 0.6 * g)
     free_left(t)
-    fist = S2W(fx, fy, D_HAND - 0.05)
-    tip = S2W(tx, ty, -0.85 + (D_HAND + 0.85) * smoothstep(0.55, 0.76, t))
+    fd = smoothstep(0.5, 0.74, t)
+    fist = S2W(fx, fy, D_HAND - 0.1 - 0.2 * fd)
+    tip = S2W(tx, ty, -0.85 + (D_HAND - 0.15 + 0.85) * fd)
     clavicle_follow('R', fist); set_pole('R', (2.6, 2.2, -2.8))
     grip('R', 0.9, 0.8)
     held_axis_place('R', fist, tip, pr['thyrsus'])
@@ -1508,15 +1513,15 @@ def L_dip(t, pr):
         c_ = bpy.context.active_object; c_.name = 'p_honey_coat'; c_.scale = (1, 1, 2.0)
         c_.rotation_euler = ax_.to_track_quat('Z', 'Y').to_euler(); c_.data.materials.append(M_HONEYD); smooth(c_)
     jar = S2W(jx, jy + 4, -0.85)
-    if 0.46 < t < 0.6:
-        f = (t - 0.46) / 0.14
+    if 0.46 < t < 0.62:
+        f = (t - 0.46) / 0.16
         mid = end.lerp(jar, 0.5) + Vector((0, 0, -0.1 * f))
         honey_strand('p_honey_thread', [end, mid, jar], 0.022 * (1 - 0.6 * f), 0.012)
-    elif 0.6 <= t < 0.76:
-        f = (t - 0.6) / 0.16
-        honey_strand('p_honey_drip', [end, end + Vector((0, 0, -0.08 - 0.25 * f))], 0.02, 0.01)
+    elif 0.62 <= t < 0.76:
+        f = (t - 0.62) / 0.14
+        honey_strand('p_honey_drip', [end, end + Vector((0, 0, -0.08 - 0.2 * f))], 0.02, 0.01)
     elif t >= 0.76:
-        bot = S2W(DRINK[0] - 4, DRINK[1] - 26, D_HAND)
+        bot = S2W(DRINK[0] + 2, DRINK[1] - 16, D_HAND - 0.15)
         ph = (t - 0.76) / 0.24
         honey_strand('p_honey_run', [end, end.lerp(bot, 0.5) + Vector((0.004 * math.sin(ph * 12), 0, 0)), bot], 0.02, 0.009)
 
@@ -1528,7 +1533,7 @@ LOOPS = {
     'stir': (L_stir, 14, 10, 0, ('thyrsus',)),
     'pour': (L_pour, 28, 8.5, 21, ('bottle',)),
     'shake': (L_shake, 12, 12, 0, ('shaker',)),
-    'reach': (L_reach, 28, 8.5, 22, ('small',)),
+    'reach': (L_reach, 28, 8.5, 24, ('small',)),
     'story': (L_story, 16, 8, 0, ()),
     'dip': (L_dip, 28, 8.5, 22, ('thyrsus',)),
 }
