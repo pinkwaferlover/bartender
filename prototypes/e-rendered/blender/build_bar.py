@@ -373,8 +373,6 @@ group('counterfront_details', cparts, FRONT_Y - 0.001)
 # ---------------------------------------------------------------- touchables: true colour (Q7)
 M_GREEN = mat('menu_green', '#1f5a42', 0.45, coat=0.3)
 M_GOLD = mat('gold', '#d8b25a', 0.25, 1.0)
-M_IVORY = mat('ivory', '#f3ead6', 0.25, coat=0.6)
-M_PIP = mat('pip', '#b3172a', 0.3)
 
 
 def menu_texture():
@@ -658,23 +656,181 @@ def honey_jar():
     return parts
 
 
+def _die_noise(n, L, scale, detail=4, stretch=(1, 1, 1), rough=0.55):
+    tc = n.new('ShaderNodeTexCoord'); mp = n.new('ShaderNodeMapping'); mp.inputs['Scale'].default_value = stretch
+    nz = n.new('ShaderNodeTexNoise'); nz.inputs['Scale'].default_value = scale
+    nz.inputs['Detail'].default_value = detail; nz.inputs['Roughness'].default_value = rough
+    L.new(tc.outputs['Object'], mp.inputs[0]); L.new(mp.outputs[0], nz.inputs['Vector'])
+    return nz
+
+
+def _die_math(n, L, op, *vals, clamp=False):
+    m = n.new('ShaderNodeMath'); m.operation = op; m.use_clamp = clamp
+    for i, v in enumerate(vals):
+        if v is None: continue
+        if isinstance(v, (int, float)): m.inputs[i].default_value = v
+        else: L.new(v, m.inputs[i])
+    return m.outputs[0]
+
+
+def _die_mix(n, L, fac, a, b, blend='MIX'):
+    m = n.new('ShaderNodeMix'); m.data_type = 'RGBA'; m.blend_type = blend
+    for sock, v in (('Factor', fac), ('A', a), ('B', b)):
+        if isinstance(v, tuple): m.inputs[sock].default_value = v
+        elif isinstance(v, (int, float)): m.inputs[sock].default_value = v
+        else: L.new(v, m.inputs[sock])
+    return m.outputs['Result']
+
+
+def dice_materials():
+    """Old bone: a warm cream with a faint yellow (true colour, it is a touchable), some light through it
+    (subsurface), fine striations along the grain with the odd dark pore, yellower in the hollows and polished
+    lighter on the worn edges; a slight polish, no clearcoat. The pips are drilled and filled with a deep red
+    paint, matte and a little uneven."""
+    if 'die_bone' in MATS: return MATS['die_bone'], MATS['die_paint']
+    m = bpy.data.materials.new('die_bone'); m.use_nodes = True
+    n = m.node_tree.nodes; L = m.node_tree.links; b = n['Principled BSDF']
+    b.inputs['Subsurface Weight'].default_value = 0.22
+    b.inputs['Subsurface Radius'].default_value = (1.0, 0.62, 0.32)
+    b.inputs['Subsurface Scale'].default_value = 0.012
+    b.inputs['IOR'].default_value = 1.54; b.inputs['Specular IOR Level'].default_value = 0.42
+    grain = _die_noise(n, L, 230, 6, (0.04, 1.0, 1.0), 0.55)      # long fine streaks along local X
+    pore = _die_noise(n, L, 420, 2, (0.15, 1.0, 1.0), 0.5)       # tiny dark pores, also along the grain
+    blot = _die_noise(n, L, 7, 3)                                # broad age staining
+    col = _ramp(n, L, grain.outputs['Fac'], [(0.25, srgb('#e1d5b8')), (0.75, srgb('#ece4cd'))])
+    stain = _die_math(n, L, 'MULTIPLY', _die_math(n, L, 'SUBTRACT', blot.outputs['Fac'], 0.45), 3.0, clamp=True)
+    c = _die_mix(n, L, stain, col.outputs['Color'], srgb('#f2e4c0'), 'MULTIPLY')
+    pdots = _die_math(n, L, 'GREATER_THAN', pore.outputs['Fac'], 0.78)
+    c = _die_mix(n, L, _die_math(n, L, 'MULTIPLY', pdots, 0.6), c, srgb('#9a8262'))
+    # grime in the hollows (round the pip rims) and handling polish on the edges
+    ao = n.new('ShaderNodeAmbientOcclusion'); ao.inputs['Distance'].default_value = 0.012; ao.only_local = True; ao.samples = 8
+    grime = _die_math(n, L, 'MULTIPLY', _die_math(n, L, 'SUBTRACT', 1.0, ao.outputs['AO']), 1.4, clamp=True)
+    c = _die_mix(n, L, grime, c, srgb('#a88a5e'), 'MULTIPLY')
+    bev = n.new('ShaderNodeBevel'); bev.samples = 6; bev.inputs['Radius'].default_value = 0.006
+    geo = n.new('ShaderNodeNewGeometry')
+    dt = n.new('ShaderNodeVectorMath'); dt.operation = 'DOT_PRODUCT'
+    L.new(bev.outputs[0], dt.inputs[0]); L.new(geo.outputs['Normal'], dt.inputs[1])
+    edge = _die_math(n, L, 'MULTIPLY', _die_math(n, L, 'SUBTRACT', 1.0, dt.outputs['Value']), 12.0, clamp=True)
+    c = _die_mix(n, L, _die_math(n, L, 'MULTIPLY', edge, 0.55), c, srgb('#f2e6cc'))
+    L.new(c, b.inputs['Base Color'])
+    # roughness 0.34..0.5 with polish variation, smoother on the handled edges
+    rough = n.new('ShaderNodeMapRange'); L.new(blot.outputs['Fac'], rough.inputs['Value'])
+    rough.inputs['From Min'].default_value = 0.3; rough.inputs['From Max'].default_value = 0.7
+    rough.inputs['To Min'].default_value = 0.34; rough.inputs['To Max'].default_value = 0.5
+    L.new(_die_math(n, L, 'MULTIPLY_ADD', edge, -0.1, rough.outputs['Result']), b.inputs['Roughness'])
+    # micro bump: the grain plus fine scratches across it, the pores sunk
+    scr = _die_noise(n, L, 260, 3, (1.0, 0.04, 0.6), 0.5)
+    hsum = _die_math(n, L, 'MULTIPLY_ADD', scr.outputs['Fac'], 0.6, grain.outputs['Fac'])
+    hsum = _die_math(n, L, 'SUBTRACT', hsum, pdots)
+    bump = n.new('ShaderNodeBump'); bump.inputs['Strength'].default_value = 0.14; bump.inputs['Distance'].default_value = 0.0012
+    L.new(hsum, bump.inputs['Height']); L.new(bev.outputs[0], bump.inputs['Normal']); L.new(bump.outputs[0], b.inputs['Normal'])
+    MATS['die_bone'] = m
+    p = bpy.data.materials.new('die_paint'); p.use_nodes = True
+    n = p.node_tree.nodes; L = p.node_tree.links; b = n['Principled BSDF']
+    pn = _die_noise(n, L, 60, 4)
+    pc = _ramp(n, L, pn.outputs['Fac'], [(0.35, srgb('#5f0d15')), (0.65, srgb('#8f1420'))])
+    L.new(pc.outputs['Color'], b.inputs['Base Color'])
+    b.inputs['Roughness'].default_value = 0.6; b.inputs['Specular IOR Level'].default_value = 0.35
+    MATS['die_paint'] = p
+    return m, p
+
+
+def _die_shadow_material():
+    """Black with an alpha falloff from the die's square footprint (plane local XY, Blender units): a tight dark
+    line where it touches, then a soft shade pushed back and to the left, away from the warm key."""
+    sm = bpy.data.materials.new('die_shadow'); sm.use_nodes = True
+    n = sm.node_tree.nodes; L = sm.node_tree.links
+    n.remove(n['Principled BSDF']); out = n['Material Output']
+    tc = n.new('ShaderNodeTexCoord')
+
+    def sdf(off, half):
+        sb = n.new('ShaderNodeVectorMath'); sb.operation = 'SUBTRACT'; L.new(tc.outputs['Object'], sb.inputs[0]); sb.inputs[1].default_value = off
+        ab = n.new('ShaderNodeVectorMath'); ab.operation = 'ABSOLUTE'; L.new(sb.outputs[0], ab.inputs[0])
+        s2 = n.new('ShaderNodeVectorMath'); s2.operation = 'SUBTRACT'; L.new(ab.outputs[0], s2.inputs[0]); s2.inputs[1].default_value = (half, half, 0)
+        mx = n.new('ShaderNodeVectorMath'); mx.operation = 'MAXIMUM'; L.new(s2.outputs[0], mx.inputs[0]); mx.inputs[1].default_value = (0, 0, 0)
+        ln = n.new('ShaderNodeVectorMath'); ln.operation = 'LENGTH'; L.new(mx.outputs[0], ln.inputs[0])
+        return ln.outputs['Value']
+    return sm, n, L, out, sdf
+
+
 def dice():
-    Y = -1.0; yb = surface_y(Y); s = 0.27
-    bpy.ops.mesh.primitive_cube_add(size=s, location=P(938, yb - 13.5, 0)); d = bpy.context.active_object
-    add_bevel(d, 0.035, 4); d.data.materials.append(M_IVORY); smooth(d)
-    pips = []
-    for (px, pz) in ((-0.07, 0.07), (0, 0), (0.07, -0.07)):            # front face: three
-        bpy.ops.mesh.primitive_uv_sphere_add(radius=0.027, location=(px, -s / 2 + 0.008, pz)); p = bpy.context.active_object
-        p.scale = (1, 0.45, 1); p.data.materials.append(M_PIP); smooth(p); p.parent = d; pips.append(p)
-    for (px, py) in ((-0.07, -0.07), (0.07, 0.07)):                    # top face: two
-        bpy.ops.mesh.primitive_uv_sphere_add(radius=0.027, location=(px, py, s / 2 - 0.008)); p = bpy.context.active_object
-        p.scale = (1, 1, 0.45); p.data.materials.append(M_PIP); smooth(p); p.parent = d; pips.append(p)
-    for (py, pz) in ((-0.06, 0.06), (0.0, 0.0), (0.06, -0.06), (-0.06, -0.06), (0.06, 0.06)):  # right face: five
-        bpy.ops.mesh.primitive_uv_sphere_add(radius=0.024, location=(s / 2 - 0.008, py, pz)); p = bpy.context.active_object
-        p.scale = (0.45, 1, 1); p.data.materials.append(M_PIP); smooth(p); p.parent = d; pips.append(p)
-    d.rotation_euler = (0, 0, math.radians(-22))
-    push(d, Y)
-    return [d] + pips
+    """One old bone die on the counter (x 938, depth -1.0). A real Western die: opposite faces sum to 7 and it
+    is right-handed (1, 2, 3 run counterclockwise round their corner); we see 1 on top, 3 at the front and 5 on
+    the right. Hand-filed small round edges, a little out of true; drilled pips filled with red paint.
+    Its shadow is off (the panther bats the die away, so nothing of it may stay behind in the background);
+    instead it carries its own soft contact shadow, on a small plane under it inside its own layer."""
+    Y = -1.0; yb = surface_y(Y); s = 0.262; h = s / 2
+    M_BONE, M_PNT = dice_materials()
+    from mathutils import noise as mnoise
+    import random
+    bm = bmesh.new(); bmesh.ops.create_cube(bm, size=s)
+    bmesh.ops.subdivide_edges(bm, edges=bm.edges[:], cuts=5, use_grid_fill=True)
+    sharp = [e for e in bm.edges if e.is_manifold and e.calc_face_angle(0) > 1.0]
+    bmesh.ops.bevel(bm, geom=sharp, offset=0.014, offset_type='OFFSET', segments=4, profile=0.5, affect='EDGES', clamp_overlap=True)
+    for v in bm.verts:   # hand-made: a little out of square, the faces not quite flat
+        v.co += mnoise.noise_vector(v.co * 9.0 + Vector((3.1, 7.7, 1.3))) * 0.0022
+    me = bpy.data.meshes.new('die'); bm.to_mesh(me); bm.free()
+    d = bpy.data.objects.new('die', me); link(d); me.materials.append(M_BONE)
+    # drilled pips: spherical cups 0.6 of their radius deep, cut with one boolean, painted inside
+    cut = bpy.data.collections.new('die_cut'); scene.collection.children.link(cut)
+    o = 0.066
+    holes = [((0, 0, h), (0, 0, 1), 1.22)]                                                         # top: one
+    holes += [((x, -h, z), (0, -1, 0), 1.0) for x, z in ((-o, o), (0, 0), (o, -o))]                # front: three
+    holes += [((h, y, z), (1, 0, 0), 1.0) for y, z in ((-o, o), (o, o), (0, 0), (-o, -o), (o, -o))]  # right: five
+    rng = random.Random(7)
+    for c, nrm, k in holes:
+        rr = 0.0215 * k * rng.uniform(0.96, 1.04); nv = Vector(nrm)
+        bs = bmesh.new(); bmesh.ops.create_uvsphere(bs, u_segments=28, v_segments=14, radius=rr)
+        ms = bpy.data.meshes.new('die_hole'); bs.to_mesh(ms); bs.free(); ms.materials.append(M_PNT)
+        ho = bpy.data.objects.new('die_hole', ms); cut.objects.link(ho)
+        jit = Vector((rng.uniform(-1, 1), rng.uniform(-1, 1), rng.uniform(-1, 1))) * 0.0018
+        jit -= nv * jit.dot(nv)
+        ho.location = Vector(c) + jit + nv * (0.4 * rr)
+    bo = d.modifiers.new('pips', 'BOOLEAN'); bo.operation = 'DIFFERENCE'; bo.operand_type = 'COLLECTION'
+    bo.collection = cut; bo.solver = 'EXACT'; bo.material_mode = 'TRANSFER'
+    bpy.context.view_layer.update()
+    me2 = bpy.data.meshes.new_from_object(d.evaluated_get(bpy.context.evaluated_depsgraph_get()))
+    d.modifiers.clear(); d.data = me2
+    for ho in list(cut.objects): bpy.data.objects.remove(ho, do_unlink=True)
+    bpy.data.collections.remove(cut)
+    bm = bmesh.new(); bm.from_mesh(me2)
+    for f in bm.faces: f.smooth = True
+    for e in bm.edges: e.smooth = not (e.is_manifold and e.calc_face_angle(0) > math.radians(40))
+    bm.to_mesh(me2); bm.free()
+    d.location = P(938, yb - h / U - 0.05, 0)
+    d.rotation_euler = (0, 0, math.radians(-24))
+    d.visible_shadow = False; d.visible_glossy = False   # nothing of it may stay behind in the background
+    # its own contact shadow
+    sm, n, L, out, sdf = _die_shadow_material()
+    contact = _die_math(n, L, 'EXPONENT', _die_math(n, L, 'MULTIPLY', sdf((0, 0, 0), h - 0.004), -1 / 0.006))
+    contact = _die_math(n, L, 'MULTIPLY', contact, 0.85)
+    soft = n.new('ShaderNodeMapRange'); soft.interpolation_type = 'SMOOTHERSTEP'
+    L.new(sdf((-0.03, 0.045, 0), h - 0.025), soft.inputs['Value'])
+    soft.inputs['From Min'].default_value = 0.0; soft.inputs['From Max'].default_value = 0.045
+    soft.inputs['To Min'].default_value = 0.62; soft.inputs['To Max'].default_value = 0.0
+    a = _die_math(n, L, 'MINIMUM', _die_math(n, L, 'MAXIMUM', contact, soft.outputs['Result']), 0.85)
+    tr = n.new('ShaderNodeBsdfTransparent'); bk = n.new('ShaderNodeBsdfDiffuse'); bk.inputs['Color'].default_value = (0, 0, 0, 1)
+    mxs = n.new('ShaderNodeMixShader'); L.new(a, mxs.inputs[0]); L.new(tr.outputs[0], mxs.inputs[1]); L.new(bk.outputs[0], mxs.inputs[2])
+    L.new(mxs.outputs[0], out.inputs['Surface'])
+    ext = h + 0.09
+    sh = mesh_obj('die_shadow', [(-ext, -ext, 0), (ext, -ext, 0), (ext, ext, 0), (-ext, ext, 0)], [(0, 1, 2, 3)], sm)
+    sh.location = P(938, yb - 0.08, 0); sh.rotation_euler = d.rotation_euler
+    for a_ in ('visible_diffuse', 'visible_glossy', 'visible_shadow', 'visible_transmission', 'visible_volume_scatter'):
+        setattr(sh, a_, False)
+    for ob in (d, sh): push(ob, Y)
+    # a small warm softbox high on the left, behind, linked to the die only: a soft sheen along the top and
+    # the left edge so the bone separates from the dark wall (no hard white spot)
+    rc = bpy.data.collections.new('die_lit'); rc.objects.link(d)
+    ld = bpy.data.lights.new('die_soft', 'AREA'); ld.energy = DIE_SOFT_W; ld.color = srgb('#ffd8a8')[:3]
+    ld.shape = 'DISK'; ld.size = 0.7
+    lo = bpy.data.objects.new('die_soft', ld); link(lo)
+    c0 = d.location.copy(); lo.location = c0 + Vector((-0.7, 0.55, 0.9))
+    lo.rotation_euler = (c0 - lo.location).to_track_quat('-Z', 'Y').to_euler()
+    lo.visible_camera = False; lo.light_linking.receiver_collection = rc
+    return [d, sh]
+
+
+DIE_SOFT_W = 16.0
 
 
 # Dionysus' panther: a real leopard model from Sketchfab (see ../CREDITS.md), CC BY 4.0.
