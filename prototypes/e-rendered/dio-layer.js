@@ -4,8 +4,9 @@
    LoopDio  : the default. Rendered loops, one per action, each a list of frames or a video (R4), from
               blender/build_dionysus.py (a MakeHuman base in painted marble, R3). Manifest: dio-loops.json;
               another can be given with ?loops=<manifest.json>. See dio-loops.example.json for the format.
-   SvgDio   : prototype B's flat figure, solved each frame (two-bone IK). Shown until the loops have loaded,
-              and kept if they can't load (for example from file://), or always with ?dio=svg.
+   SvgDio   : prototype B's flat figure, solved each frame (two-bone IK). The fallback: hidden from the start
+              (index.html), shown only if the loops can't load (for example from file://) or haven't shown
+              their first frames after FALLBACK_MS, hidden again when they arrive; always shown with ?dio=svg.
 
    Interface (both):
      el                      the layer's root <g>, in world units (he stands at x 800, his feet at y 672)
@@ -16,29 +17,37 @@
                              ctx: { r (recipe), fruit (colour), honeyAt ([x,y] world) }. Returns a Promise that
                              resolves when the step has been acted out.
      lookUp(on)              head up while he is talking
-     setLook(LOOK)           finish and coverage (Q8, Q9)
+     setLook(LOOK)           finish and coverage (Q8, Q9). The loops follow LOOK.finish (one frame set per
+                             finish); coverage stays classical in the renders and applies to B's figure only.
      tick(t, dt)             called every frame
      headRect()              screen rect of his head, for the speech bubble
 */
-const DIO_LOOPS = ['polish', 'stir', 'pour', 'shake', 'reach', 'story'];
-/* Every recipe action is one of the six loops. */
-const LOOP_OF = { thyrsus: 'stir', honey: 'stir', vine: 'pour', strain: 'pour', lemon: 'reach', mint: 'reach', ice: 'reach', garnish: 'reach', shake: 'shake', heat: 'polish' };
+const DIO_LOOPS = ['polish', 'stir', 'pour', 'shake', 'reach', 'story', 'dip'];
+/* Every recipe action is one of the seven loops. dip (R8): the thyrsus into the honey jar, lifted dripping
+   toward the glass; a manifest without it plays stir instead. */
+const LOOP_FALLBACK = { dip: 'stir' };
+const LOOP_OF = { thyrsus: 'stir', honey: 'dip', vine: 'pour', strain: 'pour', lemon: 'reach', mint: 'reach', ice: 'reach', garnish: 'reach', shake: 'shake', heat: 'polish' };
 const ACT_S = 3.2;   // how long acting out one step takes, before he waits for your tap
+const FALLBACK_MS = 1500;   // show B's drawn figure if the loops haven't shown by then
 
 function makeDio(root) {
   const q = new URLSearchParams(location.search);
   const svgDio = SvgDio(root);
-  if (q.get('dio') === 'svg') return svgDio;
-  // Start with the drawn figure, switch to the rendered loops once their manifest and first frames are in.
+  if (q.get('dio') === 'svg') { svgDio.shown(true); return svgDio; }
+  // B's figure stays hidden (it acts on, unseen, so a step in progress keeps its promise) while the loops load.
+  // It is shown if they fail, or haven't shown their first frames after FALLBACK_MS; hidden again once they do.
   let cur = svgDio; const loops = LoopDio(root);
+  const timer = setTimeout(() => { if (cur === svgDio) svgDio.shown(true); }, FALLBACK_MS);
   fetch(q.get('loops') || 'dio-loops.json').then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
-    .then(m => loops.load(m)).then(() => { loops.copyState(cur); cur = loops; })
-    .catch(e => { console.warn('Dionysus loops not loaded (' + e.message + '); keeping the drawn figure.'); loops.fail(); });
+    .then(m => loops.load(m)).then(() => { clearTimeout(timer); svgDio.shown(false, true); loops.copyState(cur); cur = loops; })
+    .catch(e => { clearTimeout(timer); console.warn('Dionysus loops not loaded (' + e.message + '); showing the drawn figure.'); loops.fail(); svgDio.shown(true); });
   const api = {};
   ['idle', 'story', 'perform', 'lookUp', 'setLook', 'tick', 'headRect'].forEach(k => { api[k] = (...a) => { if (k === 'setLook' || k === 'lookUp') { svgDio[k](...a); loops[k](...a); } return cur[k](...a); }; });
   Object.defineProperty(api, 'kind', { get: () => cur.kind });
   Object.defineProperty(api, 'acting', { get: () => cur.acting });
   Object.defineProperty(api, 'el', { get: () => cur.el });
+  Object.defineProperty(api, 'finish', { get: () => cur.finish });   // the finish the loops show (undefined for B's figure)
+  Object.defineProperty(api, 'loop', { get: () => cur.loop });       // the loop playing, after fallbacks
   return api;
 }
 
@@ -221,9 +230,9 @@ function SvgDio(root) {
   const passing = document.getElementById('passing');
   passing.innerHTML = `<g id="grapes"><path d="M0 -200 C10 -120 -10 -60 0 0" stroke="#3f7a34" stroke-width="5" fill="none"/>${[[0, 0], [-10, 10], [10, 10], [-16, 22], [0, 22], [16, 22], [-8, 34], [8, 34], [0, 46]].map(([x, y]) => `<circle cx="${x}" cy="${y}" r="10" fill="#5b2a6b"/>`).join('')}<ellipse cx="-14" cy="-10" rx="16" ry="9" fill="#3f7a34" transform="rotate(-30 -14 -10)"/></g>`;
   const grapes = document.getElementById('grapes'); grapes.style.display = 'none';
-  let lookCfg = LOOK;
+  let lookCfg = LOOK, visible = false;
   function cheeky(t, dt) {
-    if (lookCfg.coverage !== 'cheeky' || mode !== 'polish' || RM) { rise = lerp(rise, 0, .2); grapes.style.display = 'none'; return; }
+    if (!visible || lookCfg.coverage !== 'cheeky' || mode !== 'polish' || RM) { rise = lerp(rise, 0, .2); grapes.style.display = 'none'; return; }
     riseT += dt; const cyc = riseT % 9, up = cyc > 6 ? Math.sin(Math.PI * (cyc - 6) / 3) : 0; rise = 30 * up;
     grapes.style.display = up > 0 ? '' : 'none';
     if (up > 0) grapes.setAttribute('transform', `translate(${lerp(700, 900, (cyc - 6) / 3)} 620) rotate(${Math.sin(t * 3) * 8})`);
@@ -231,6 +240,13 @@ function SvgDio(root) {
 
   return {
     kind: 'svg', el: root,
+    // show or hide the drawn figure (and the cheeky grapes, which pass in front of it alone);
+    // gone: the loops have taken over, so it leaves the layout too (and #dio's bbox)
+    shown(on, gone) {
+      visible = on; const b = q('#body');
+      b.style.visibility = on ? 'visible' : 'hidden'; b.style.display = gone ? 'none' : '';
+      if (!on) grapes.style.display = 'none';
+    },
     idle() { mode = 'polish'; act.name = 'rest'; },
     story() { mode = 'story'; },
     perform(action, ctx = {}) {
@@ -257,55 +273,90 @@ function SvgDio(root) {
 /* ---------------------------------------------------------------- LoopDio: rendered loops (R4)
    manifest: { rect: [x, y, w, h] in world units (where the rendered frames sit),
                head: [x, y, w, h] (for the speech bubble),
-               loops: { polish: { frames: ["a.webp", ...], fps: 12, hold: 8 } | { video: "polish.webm", hold: 1.6 }, ... } }
+               loops: { polish: { frames: ["a.webp", ...], fps: 12, hold: 8 } | { video: "polish.webm", hold: 1.6 }, ... },
+                        the default finish, painted marble (Q8)
+               finishes: { white: { loops: { ...the same names } }, living: { loops: { ... } } } }
    idle (polish) and story repeat whole. A recipe step plays its loop for at least ACT_S seconds and at least
    once, then he waits for your tap: on the loop's tail from `hold` (a frame index, or seconds for video), or
-   still on its first frame when hold is 0. With reduced motion every loop is a single still frame. */
+   still on its first frame when hold is 0. With reduced motion every loop is a single still frame.
+   Finishes load lazily: only the finish in use is preloaded. On a switch he keeps the old finish until the new
+   finish's frames for the loop he is playing are decoded, then swaps in place (same loop, frame and step state).
+   A finish the manifest lacks stays on the default; a loop a finish lacks plays its LOOP_FALLBACK, then polish. */
 function LoopDio(root) {
   const NS = 'http://www.w3.org/2000/svg', RM = reduceMotion();
   // the frames live inside #dio, so taps on him still reach the app's handler; B's figure (#body) is hidden
   const g = document.createElementNS(NS, 'g'); g.id = 'dioLoops'; root.appendChild(g);
   const OX = 800, OY = 672;   // #dio's own translate
   let M = null, cur = null, f = 0, ft = 0, actT = 0, done = null, ready = false, imgEl = null, vid = null, waiting = false;
+  let fin = 'painted', want = 'painted', S = null;   // finish shown, finish asked for, its loop set
   const cache = {};
   function preload(src) { if (cache[src]) return cache[src]; const im = new Image(); im.src = src; cache[src] = im.decode().catch(() => {}); return cache[src]; }
+  const setOf = k => (M && k !== 'painted' && M.finishes && M.finishes[k] && M.finishes[k].loops) || (M && M.loops) || {};
+  const finOf = k => (M && k !== 'painted' && M.finishes && M.finishes[k] && M.finishes[k].loops) ? k : 'painted';
+  const resolve = (set, name) => set[name] ? name : set[LOOP_FALLBACK[name]] ? LOOP_FALLBACK[name] : 'polish';
+  const firstFrames = set => Object.values(set).map(L => L.frames ? L.frames[0] : null).filter(Boolean);
+  const allFrames = (set, name) => { const L = set[resolve(set, name)]; return L && L.frames ? L.frames : []; };
   function show(src) { if (imgEl) imgEl.setAttribute('href', src); }
-  function set(name, oneShot) {
-    if (!M || !M.loops[name]) name = 'polish';
-    if (!M || !M.loops[name]) return;
-    cur = { name, L: M.loops[name], oneShot }; f = 0; ft = 0; actT = 0; waiting = false;
+  const still = L => Math.min(L.hold || Math.floor(L.frames.length / 2), L.frames.length - 1);
+  function build(L) {   // the <image> (or video) for a loop
     const [x, y, w, h] = M.rect;
-    if (cur.L.video) {
+    if (L.video) {
       g.innerHTML = '';
       const fo = document.createElementNS(NS, 'foreignObject'); fo.setAttribute('x', x - OX); fo.setAttribute('y', y - OY); fo.setAttribute('width', w); fo.setAttribute('height', h);
-      vid = document.createElement('video'); vid.src = cur.L.video; vid.muted = true; vid.playsInline = true; vid.autoplay = !RM; vid.style.cssText = 'width:100%;height:100%';
+      vid = document.createElement('video'); vid.src = L.video; vid.muted = true; vid.playsInline = true; vid.autoplay = !RM; vid.style.cssText = 'width:100%;height:100%';
       vid.onended = () => { vid.currentTime = cur.L.hold || 0; vid.play(); finish(); };
       fo.appendChild(vid); g.appendChild(fo); imgEl = null;
-    } else {
-      if (!imgEl || !imgEl.isConnected) {
-        g.innerHTML = ''; imgEl = document.createElementNS(NS, 'image');
-        imgEl.setAttribute('x', x - OX); imgEl.setAttribute('y', y - OY); imgEl.setAttribute('width', w); imgEl.setAttribute('height', h);
-        imgEl.setAttribute('preserveAspectRatio', 'none'); imgEl.setAttribute('pointer-events', 'none'); g.appendChild(imgEl); vid = null;
-        // taps land on his shape, not on the frame's transparent box (which would cover the shelf behind him)
-        const hd = M.head, hit = document.createElementNS(NS, 'path');
-        const hx = hd[0] + hd[2] / 2 - OX, hy = hd[1] - OY;
-        hit.setAttribute('d', `M${hx - hd[2] / 2} ${hy + hd[3] * .45} a${hd[2] / 2} ${hd[3] * .45} 0 1 1 ${hd[2]} 0 L${hx + 115} ${hy + hd[3] * 1.05} L${hx + 120} ${y + h - OY} L${hx - 120} ${y + h - OY} L${hx - 115} ${hy + hd[3] * 1.05} Z`);
-        hit.setAttribute('fill', 'transparent'); g.appendChild(hit);
-      }
-      cur.L.frames.forEach(preload);
-      f = RM ? Math.min(cur.L.hold || Math.floor(cur.L.frames.length / 2), cur.L.frames.length - 1) : 0;
-      show(cur.L.frames[f]);
+    } else if (!imgEl || !imgEl.isConnected) {
+      g.innerHTML = ''; imgEl = document.createElementNS(NS, 'image');
+      imgEl.setAttribute('x', x - OX); imgEl.setAttribute('y', y - OY); imgEl.setAttribute('width', w); imgEl.setAttribute('height', h);
+      imgEl.setAttribute('preserveAspectRatio', 'none'); imgEl.setAttribute('pointer-events', 'none'); g.appendChild(imgEl); vid = null;
+      // taps land on his shape, not on the frame's transparent box (which would cover the shelf behind him)
+      const hd = M.head, hit = document.createElementNS(NS, 'path');
+      const hx = hd[0] + hd[2] / 2 - OX, hy = hd[1] - OY;
+      hit.setAttribute('d', `M${hx - hd[2] / 2} ${hy + hd[3] * .45} a${hd[2] / 2} ${hd[3] * .45} 0 1 1 ${hd[2]} 0 L${hx + 115} ${hy + hd[3] * 1.05} L${hx + 120} ${y + h - OY} L${hx - 120} ${y + h - OY} L${hx - 115} ${hy + hd[3] * 1.05} Z`);
+      hit.setAttribute('fill', 'transparent'); g.appendChild(hit);
+      const tmp = root.querySelector('#dioHit'); if (tmp) tmp.style.display = 'none';   // index.html's stand-in while loading
     }
+  }
+  function set(name, oneShot) {
+    if (!M) return;
+    const real = resolve(S, name); if (!S[real]) return;
+    cur = { name, L: S[real], oneShot }; f = 0; ft = 0; actT = 0; waiting = false;
+    build(cur.L);
+    if (cur.L.frames) { cur.L.frames.forEach(preload); f = RM ? still(cur.L) : 0; show(cur.L.frames[f]); }
+  }
+  // swap to the frame set of `k` in place, keeping the loop, its frame and its step state (oneShot, waiting, actT)
+  function swap(k) {
+    fin = k; S = setOf(k);
+    if (!cur) return;
+    const L = S[resolve(S, cur.name)]; if (!L) return;
+    const wasVideo = !!cur.L.video; cur.L = L;
+    if (L.video || wasVideo) { build(L); if (L.video) return; }
+    f = RM ? still(L) : Math.min(f, L.frames.length - 1); show(L.frames[f]);
+  }
+  function switchTo(k) {   // lazy: wait for the new finish's frames for the current loop, then swap
+    want = k;
+    if (!ready) return;
+    k = finOf(k); if (k === fin) return;
+    const T = setOf(k);
+    const need = () => cur ? allFrames(T, cur.name) : [];
+    firstFrames(T).forEach(preload);
+    const wait = () => { const n = need(), name = cur && cur.name; return Promise.all(n.map(preload)).then(() => (cur && cur.name !== name) ? wait() : null); };
+    wait().then(() => {
+      if (finOf(want) !== k) return;    // asked for another finish meanwhile
+      swap(k);
+      Object.values(T).forEach(L => (L.frames || []).forEach(preload));
+    });
   }
   function finish() { if (done) { const d = done; done = null; d(true); } }
   const self = {
     kind: 'loops', el: g,
     load(m) {
-      M = m; const first = Object.values(m.loops).map(L => L.frames ? L.frames[0] : null).filter(Boolean);
-      return Promise.all(first.map(preload)).then(() => {
-        ready = true; const b = root.querySelector('#body'); if (b) b.style.display = 'none';
+      M = m; fin = finOf(want); S = setOf(fin);
+      return Promise.all(firstFrames(S).map(preload)).then(() => {
+        ready = true;
         set('polish');
-        Object.values(m.loops).forEach(L => (L.frames || []).forEach(preload));
+        Object.values(S).forEach(L => (L.frames || []).forEach(preload));
       });
     },
     copyState() {},
@@ -318,7 +369,10 @@ function LoopDio(root) {
       if (RM) return Promise.resolve(true);
       return new Promise(res => { done = res; });
     },
-    lookUp() {}, setLook() {},
+    lookUp() {},
+    setLook(L) { switchTo((L && L.finish) || 'painted'); },
+    get finish() { return fin; },
+    get loop() { return cur ? resolve(S, cur.name) : null; },
     tick(t, dt) {
       if (!cur || !imgEl || RM) return;
       const fr = cur.L.frames, fps = cur.L.fps || 12;
