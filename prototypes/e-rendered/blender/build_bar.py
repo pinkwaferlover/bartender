@@ -371,46 +371,306 @@ WORLD += cparts
 group('counterfront_details', cparts, FRONT_Y - 0.001)
 
 # ---------------------------------------------------------------- touchables: true colour (Q7)
-M_GREEN = mat('menu_green', '#1f5a42', 0.45, coat=0.3)
-M_GOLD = mat('gold', '#d8b25a', 0.25, 1.0)
+MENU_W, MENU_H, MENU_T, MENU_R = 1.0, 1.08, 0.028, 0.045   # the board, Blender units: about 30 x 32 cm, 8 mm thick
+MENU_SOFT = 8                                              # watts, the menu's own soft light
+
+
+def _menu_grain(n, L, scale=115.0):
+    """Pebbled leather grain: Voronoi cells (object space), their edges cut a touch deeper by a fine noise."""
+    tc = n.new('ShaderNodeTexCoord')
+    wn = n.new('ShaderNodeTexNoise'); wn.inputs['Scale'].default_value = 40.0; wn.inputs['Detail'].default_value = 3
+    L.new(tc.outputs['Object'], wn.inputs['Vector'])
+    mx = n.new('ShaderNodeMix'); mx.data_type = 'VECTOR'; mx.inputs['Factor'].default_value = 0.012
+    L.new(tc.outputs['Object'], mx.inputs['A']); L.new(wn.outputs['Color'], mx.inputs['B'])
+    vo = n.new('ShaderNodeTexVoronoi'); vo.feature = 'F1'; vo.inputs['Scale'].default_value = scale
+    vo.inputs['Randomness'].default_value = 0.9
+    L.new(mx.outputs['Result'], vo.inputs['Vector'])
+    pw = n.new('ShaderNodeMath'); pw.operation = 'POWER'; pw.inputs[1].default_value = 0.55
+    L.new(vo.outputs['Distance'], pw.inputs[0])
+    inv = n.new('ShaderNodeMath'); inv.operation = 'SUBTRACT'; inv.inputs[0].default_value = 1.0
+    L.new(pw.outputs[0], inv.inputs[1])
+    return inv.outputs[0]          # 1 on the pebble tops, 0 in the creases
+
+
+def _menu_leather_back():
+    """Plain bottle-green leather for the back and edges of the board (no print)."""
+    if 'menu_green' in MATS: return MATS['menu_green']
+    m = bpy.data.materials.new('menu_green'); m.use_nodes = True; n, L = m.node_tree.nodes, m.node_tree.links
+    b = n['Principled BSDF']
+    b.inputs['Base Color'].default_value = srgb('#0c5536'); b.inputs['Roughness'].default_value = 0.52
+    b.inputs['Sheen Weight'].default_value = 0.12; b.inputs['Sheen Tint'].default_value = srgb('#3f8f68')
+    b.inputs['Specular IOR Level'].default_value = 0.3
+    g = _menu_grain(n, L)
+    bu = n.new('ShaderNodeBump'); bu.inputs['Strength'].default_value = 0.3; bu.inputs['Distance'].default_value = 0.0012
+    L.new(g, bu.inputs['Height']); L.new(bu.outputs['Normal'], b.inputs['Normal'])
+    MATS['menu_green'] = m
+    return m
+
+
+def _menu_brass():
+    """Polished brass for the stand: metallic, a faint brushed grain along its length, uneven polish."""
+    if 'gold' in MATS: return MATS['gold']
+    m = bpy.data.materials.new('gold'); m.use_nodes = True; n, L = m.node_tree.nodes, m.node_tree.links
+    b = n['Principled BSDF']
+    b.inputs['Base Color'].default_value = srgb('#d2a048'); b.inputs['Metallic'].default_value = 1.0
+    tc = n.new('ShaderNodeTexCoord'); mp = n.new('ShaderNodeMapping'); mp.inputs['Scale'].default_value = (2, 90, 90)
+    L.new(tc.outputs['Object'], mp.inputs[0])
+    br = n.new('ShaderNodeTexNoise'); br.inputs['Scale'].default_value = 6.0; br.inputs['Detail'].default_value = 6
+    L.new(mp.outputs[0], br.inputs['Vector'])
+    sm = n.new('ShaderNodeTexNoise'); sm.inputs['Scale'].default_value = 7.0; sm.inputs['Detail'].default_value = 3
+    L.new(tc.outputs['Object'], sm.inputs['Vector'])
+    rr = n.new('ShaderNodeMapRange'); rr.inputs['From Min'].default_value = 0.35; rr.inputs['From Max'].default_value = 0.65
+    rr.inputs['To Min'].default_value = 0.2; rr.inputs['To Max'].default_value = 0.34
+    L.new(sm.outputs['Fac'], rr.inputs['Value']); L.new(rr.outputs['Result'], b.inputs['Roughness'])
+    bu = n.new('ShaderNodeBump'); bu.inputs['Strength'].default_value = 0.08; bu.inputs['Distance'].default_value = 0.0005
+    L.new(br.outputs['Fac'], bu.inputs['Height']); L.new(bu.outputs['Normal'], b.inputs['Normal'])
+    MATS['gold'] = m
+    return m
+
+
+M_GREEN = _menu_leather_back()
+M_GOLD = _menu_brass()
 M_IVORY = mat('ivory', '#f3ead6', 0.25, coat=0.6)
 M_PIP = mat('pip', '#b3172a', 0.3)
 
 
 def menu_texture():
-    """The menu card's face, drawn as a texture: green card, gold rule, MENU, three gold lines."""
-    from PIL import Image, ImageDraw, ImageFont
-    W, H = 512, 640; im = Image.new('RGB', (W, H), '#1f5a42'); d = ImageDraw.Draw(im)
-    d.rectangle([0, 0, W, 230], fill='#2a6b50')
-    d.rectangle([14, 14, W - 15, H - 15], outline='#d8b25a', width=8)
-    d.rectangle([60, 70, W - 60, 76], fill='#d8b25a')
-    f = ImageFont.truetype(FONT, 150) if os.path.exists(FONT) else ImageFont.load_default()
-    d.text((W / 2, 168), 'MENU', font=f, fill='#e2bf64', anchor='mm')
-    for i, (a, b) in enumerate(((90, 422), (120, 392), (90, 422))):
-        d.rectangle([a, 330 + i * 70, b, 342 + i * 70], fill='#d8b25a')
-    p = os.path.join(WORK, 'menu_face.png'); im.save(p)
-    return p
+    """The board's leather face at 2K, drawn with PIL. Two maps, same layout:
+    menu_face.png (colour: bottle-green leather, darker and burnished toward the turned edge, tonal stitching,
+    gold foil) and menu_data.png (R foil mask -> metallic, G roughness, B height: the foil and the stitch
+    channel are debossed into the leather). Foil: a thin and a thick rule round the face, MENU in Bebas Neue,
+    a short rule with a lozenge under it, and a bunch of grapes on a vine below."""
+    from PIL import Image, ImageDraw, ImageFont, ImageFilter
+    import numpy as np
+    W = 2048; H = int(round(W * MENU_H / MENU_W)); S = 2; W2, H2 = W * S, H * S
+    px = W2 / MENU_W                                       # supersampled pixels per Blender unit
+    foil = Image.new('L', (W2, H2), 0); fd = ImageDraw.Draw(foil)
+    groove = Image.new('L', (W2, H2), 0); gd = ImageDraw.Draw(groove)
+    thread = Image.new('L', (W2, H2), 0); td = ImageDraw.Draw(thread)
+    R = MENU_R * px
+
+    def rrect(drw, inset, width, fill=255):
+        drw.rounded_rectangle([inset, inset, W2 - 1 - inset, H2 - 1 - inset], radius=max(4, R - inset * 0.55), outline=fill, width=int(width))
+
+    # a creased line just in from the turned edge, then the saddle stitch in its channel
+    rrect(gd, 0.010 * px, 0.0028 * px)
+    si = 0.024 * px; rrect(gd, si, 0.0055 * px, 150)
+    # stitches: walk the inset rounded rectangle and lay short slanted dashes
+    rr = max(4, R - si * 0.55); x0, y0, x1, y1 = si, si, W2 - 1 - si, H2 - 1 - si
+    path = []
+    def seg(ax, ay, bx, by, n):
+        for i in range(n): path.append((ax + (bx - ax) * i / n, ay + (by - ay) * i / n))
+    def arc(cx, cy, a0, n):
+        for i in range(n):
+            a = math.radians(a0 + 90 * i / n); path.append((cx + rr * math.cos(a), cy + rr * math.sin(a)))
+    seg(x0 + rr, y0, x1 - rr, y0, 900); arc(x1 - rr, y0 + rr, -90, 60)
+    seg(x1, y0 + rr, x1, y1 - rr, 960); arc(x1 - rr, y1 - rr, 0, 60)
+    seg(x1 - rr, y1, x0 + rr, y1, 900); arc(x0 + rr, y1 - rr, 90, 60)
+    seg(x0, y1 - rr, x0, y0 + rr, 960); arc(x0 + rr, y0 + rr, 180, 60)
+    P_ = np.array(path); d = np.r_[0, np.cumsum(np.hypot(*np.diff(P_, axis=0).T))]
+    pitch = 0.0105 * px; dash = 0.0072 * px; k = 0
+    while k * pitch + dash < d[-1]:
+        a = np.interp(k * pitch, d, np.arange(len(P_))); b = np.interp(k * pitch + dash, d, np.arange(len(P_)))
+        pa, pb = P_[int(a)], P_[min(int(b), len(P_) - 1)]
+        tw = 0.0016 * px                                    # a slight twist: the thread lies at an angle
+        td.line([(pa[0] - tw, pa[1] - tw), (pb[0] + tw, pb[1] + tw)], fill=255, width=int(0.0042 * px))
+        k += 1
+    # foil frame: a thin rule and a thick one
+    rrect(fd, 0.052 * px, 0.0032 * px)
+    rrect(fd, 0.064 * px, 0.0085 * px)
+    # MENU, tracked out, centred a little above the middle
+    cx = W2 / 2; cy = 0.40 * H2
+    size = 200
+    def word_w(f, tr): return sum(f.getlength(ch) for ch in 'MENU') + tr * 3
+    while True:
+        f = ImageFont.truetype(FONT, size); tr = 0.16 * size
+        if word_w(f, tr) > 0.56 * W2: break
+        size += 8
+    x = cx - word_w(f, tr) / 2
+    for ch in 'MENU':
+        fd.text((x, cy), ch, font=f, fill=255, anchor='ls'); x += f.getlength(ch) + tr
+    capb = f.getbbox('M', anchor='ls'); cap = -capb[1]
+    # rules above and below the word, each with a lozenge
+    for ry, half in ((cy - cap - 0.075 * H2, 0.17), (cy + 0.07 * H2, 0.24)):
+        hw = half * W2; th = 0.0032 * px
+        fd.rectangle([cx - hw, ry - th / 2, cx - 0.03 * W2, ry + th / 2], fill=255)
+        fd.rectangle([cx + 0.03 * W2, ry - th / 2, cx + hw, ry + th / 2], fill=255)
+        z = 0.016 * W2; fd.polygon([(cx - z, ry), (cx, ry - z * 0.7), (cx + z, ry), (cx, ry + z * 0.7)], fill=255)
+        for sx in (-1, 1): fd.ellipse([cx + sx * hw - th * 1.6, ry - th * 1.6, cx + sx * hw + th * 1.6, ry + th * 1.6], fill=255)
+    # the vine device: a bunch of grapes hanging from a short stem off a vine branch, a big leaf and a
+    # small one on the branch, a tendril curling off its end
+    gx, gy = cx, 0.705 * H2; gr = 0.023 * W2
+    for ri, nrow in enumerate((4, 3, 3, 2, 1)):
+        yy = gy + ri * gr * 1.68
+        for j in range(nrow):
+            xx = gx + (j - (nrow - 1) / 2) * gr * 1.86 + (0.25 * gr if ri % 2 else 0)
+            fd.ellipse([xx - gr * 0.8, yy - gr * 0.8, xx + gr * 0.8, yy + gr * 0.8], fill=255)
+    lw = int(0.0052 * px)
+    def bez(p0, p1, p2, n=40):
+        return [((1 - t) ** 2 * p0[0] + 2 * t * (1 - t) * p1[0] + t * t * p2[0],
+                 (1 - t) ** 2 * p0[1] + 2 * t * (1 - t) * p1[1] + t * t * p2[1]) for t in (i / n for i in range(n + 1))]
+    by = gy - 2.5 * gr
+    branch = bez((gx - 0.15 * W2, by + 0.012 * W2), (gx - 0.02 * W2, by - 0.03 * W2), (gx + 0.13 * W2, by - 0.004 * W2))
+    fd.line(branch, fill=255, width=lw, joint='curve')
+    fd.line(bez((gx, gy - 0.6 * gr), (gx - 0.004 * W2, by + 0.01 * W2), (gx + 0.004 * W2, by - 0.012 * W2), 20), fill=255, width=int(lw * 0.9), joint='curve')
+
+    def leaf(lx, ly, rad, rot):
+        """A five-lobed vine leaf pointing along rot (radians, image space), the stalk notch opposite."""
+        pts = []
+        for i in range(160):
+            t = 2 * math.pi * i / 160
+            lobes = 0.64 + 0.36 * (1 - abs(math.sin(2.5 * t))) ** 0.9     # lobed, softly pointed
+            notch = 1 - 0.45 * math.exp(-((t - math.pi) / 0.22) ** 2)
+            rr_ = rad * lobes * notch * (0.88 + 0.12 * math.cos(t))
+            pts.append((lx + rr_ * math.cos(t + rot), ly + rr_ * math.sin(t + rot)))
+        fd.polygon(pts, fill=255)
+        bx_, by_ = lx + 0.5 * rad * math.cos(rot + math.pi), ly + 0.5 * rad * math.sin(rot + math.pi)
+        for a in (-1.26, 0.0, 1.26):                 # veins from the stalk, cut back out of the foil
+            fd.line([(bx_, by_), (lx + 0.8 * rad * math.cos(rot + a), ly + 0.8 * rad * math.sin(rot + a))], fill=0, width=max(3, lw // 3))
+        return bx_, by_
+    sx_, sy_ = leaf(gx - 0.085 * W2, by - 0.058 * W2, 0.058 * W2, math.radians(-110))
+    fd.line([(sx_, sy_), (gx - 0.06 * W2, by - 0.012 * W2)], fill=255, width=int(lw * 0.8))
+    sx_, sy_ = leaf(gx + 0.065 * W2, by - 0.04 * W2, 0.036 * W2, math.radians(-60))
+    fd.line([(sx_, sy_), (gx + 0.05 * W2, by - 0.016 * W2)], fill=255, width=int(lw * 0.7))
+    # a tendril: a tightening spiral off the branch's end; a short cut stub at its other end
+    ex, ey = branch[-1]; spts = [(ex, ey)]
+    for i in range(70):
+        t = i / 69; a = math.pi + t * 3.6 * math.pi; rad = 0.026 * W2 * (1 - 0.82 * t)
+        spts.append((ex + 0.026 * W2 + rad * math.cos(a), ey - 0.022 * W2 + rad * math.sin(a)))
+    fd.line(spts, fill=255, width=int(lw * 0.6), joint='curve')
+    fd.line(bez((gx - 0.15 * W2, by + 0.012 * W2), (gx - 0.165 * W2, by + 0.018 * W2), (gx - 0.172 * W2, by + 0.03 * W2), 10), fill=255, width=int(lw * 0.8), joint='curve')
+
+    def down(im, blur=0.0):
+        im = im.resize((W, H), Image.LANCZOS)
+        return np.asarray(im.filter(ImageFilter.GaussianBlur(blur)) if blur else im).astype(np.float32) / 255
+    fm, gm, tm = down(foil), down(groove), down(thread)
+    fsoft = down(foil, 2.2)                                  # the stamp's soft shoulder
+    # leather: low-frequency mottle, a little darker and more burnished toward the turned edge
+    rng = np.random.default_rng(7)
+    def lowfreq(n, s):
+        a = Image.fromarray((rng.random((n, int(n * H / W))) * 255).astype('uint8')).resize((W, H), Image.BICUBIC)
+        return np.asarray(a.filter(ImageFilter.GaussianBlur(s))).astype(np.float32) / 255
+    mott = 0.6 * lowfreq(24, 30) + 0.4 * lowfreq(90, 6)
+    yy, xx = np.mgrid[0:H, 0:W].astype(np.float32)
+    Rp = MENU_R * W / MENU_W
+    qx = np.abs(xx - W / 2) - (W / 2 - Rp); qy = np.abs(yy - H / 2) - (H / 2 - Rp)
+    sdf = np.hypot(np.maximum(qx, 0), np.maximum(qy, 0)) + np.minimum(np.maximum(qx, qy), 0) - Rp   # <0 inside
+    edge = np.clip(1 + sdf / (0.035 * W), 0, 1) ** 2           # 1 at the edge, 0 a few cm in
+    green = np.array([0x0c, 0x5e, 0x3c], np.float32) / 255
+    lea = green[None, None] * (0.9 + 0.2 * mott[..., None]) * (1 - 0.32 * edge[..., None])
+    lea = lea * (1 - 0.35 * gm[..., None])                     # the crease and stitch channel sit darker
+    thr = np.array([0x2a, 0x6e, 0x4c], np.float32) / 255
+    lea = lea * (1 - tm[..., None]) + thr * tm[..., None] * (0.9 + 0.2 * mott[..., None])
+    gold = np.array([0xe8, 0xb2, 0x3e], np.float32) / 255
+    gold = gold[None, None] * (0.94 + 0.12 * lowfreq(60, 4)[..., None])
+    col = lea * (1 - fm[..., None]) + gold * fm[..., None]
+    rough = 0.55 + 0.1 * (mott - 0.5) - 0.12 * edge             # leather; burnished edge
+    rough = rough * (1 - tm) + 0.7 * tm
+    rough = rough * (1 - fm) + (0.24 + 0.1 * mott) * fm          # foil
+    height = 0.75 - 0.55 * fsoft - 0.35 * gm + 0.2 * tm
+    data = np.stack([fm, np.clip(rough, 0, 1), np.clip(height, 0, 1)], -1)
+    pc = os.path.join(WORK, 'menu_face.png'); pdt = os.path.join(WORK, 'menu_data.png')
+    Image.fromarray((np.clip(col, 0, 1) * 255).astype('uint8')).save(pc)
+    Image.fromarray((data * 255).astype('uint8')).save(pdt)
+    return pc, pdt
+
+
+def _menu_face_material():
+    pc, pdt = menu_texture()
+    m = bpy.data.materials.new('menu_face'); m.use_nodes = True; n, L = m.node_tree.nodes, m.node_tree.links
+    b = n['Principled BSDF']
+    uv = n.new('ShaderNodeTexCoord')
+    tc = n.new('ShaderNodeTexImage'); tc.image = bpy.data.images.load(pc); tc.interpolation = 'Cubic'
+    td = n.new('ShaderNodeTexImage'); td.image = bpy.data.images.load(pdt); td.image.colorspace_settings.name = 'Non-Color'
+    td.interpolation = 'Cubic'
+    for t in (tc, td): L.new(uv.outputs['UV'], t.inputs['Vector'])
+    sp = n.new('ShaderNodeSeparateColor'); L.new(td.outputs['Color'], sp.inputs[0])
+    L.new(tc.outputs['Color'], b.inputs['Base Color'])
+    L.new(sp.outputs['Red'], b.inputs['Metallic'])
+    L.new(sp.outputs['Green'], b.inputs['Roughness'])
+    inv = n.new('ShaderNodeMath'); inv.operation = 'SUBTRACT'; inv.inputs[0].default_value = 1.0; L.new(sp.outputs['Red'], inv.inputs[1])
+    sh = n.new('ShaderNodeMath'); sh.operation = 'MULTIPLY'; sh.inputs[1].default_value = 0.12; L.new(inv.outputs[0], sh.inputs[0])
+    L.new(sh.outputs[0], b.inputs['Sheen Weight']); b.inputs['Sheen Tint'].default_value = srgb('#3f8f68')
+    b.inputs['Specular IOR Level'].default_value = 0.3   # leather's sheen stays soft; the key must not grey the green
+    # the stamp and the stitch channel (from the map), then the pebble grain, weaker on the foil
+    b1 = n.new('ShaderNodeBump'); b1.inputs['Strength'].default_value = 1.0; b1.inputs['Distance'].default_value = 0.0025
+    L.new(sp.outputs['Blue'], b1.inputs['Height'])
+    g = _menu_grain(n, L)
+    gw = n.new('ShaderNodeMath'); gw.operation = 'MULTIPLY_ADD'; gw.inputs[1].default_value = -0.7; gw.inputs[2].default_value = 1.0
+    L.new(sp.outputs['Red'], gw.inputs[0])
+    gs = n.new('ShaderNodeMath'); gs.operation = 'MULTIPLY'; L.new(g, gs.inputs[0]); L.new(gw.outputs[0], gs.inputs[1])
+    b2 = n.new('ShaderNodeBump'); b2.inputs['Strength'].default_value = 0.55; b2.inputs['Distance'].default_value = 0.0012
+    L.new(gs.outputs[0], b2.inputs['Height']); L.new(b1.outputs['Normal'], b2.inputs['Normal'])
+    L.new(b2.outputs['Normal'], b.inputs['Normal'])
+    return m
+
+
+def _menu_block(name, x0, x1, y0, y1, z0, z1, material, bevel=0.0, segs=3):
+    """A box in local Blender units (x across, y depth, z up)."""
+    vs = [(x, y, z) for z in (z0, z1) for (x, y) in ((x0, y0), (x1, y0), (x1, y1), (x0, y1))]
+    ob = mesh_obj(name, vs, [(3, 2, 1, 0), (4, 5, 6, 7), (0, 1, 5, 4), (1, 2, 6, 5), (2, 3, 7, 6), (3, 0, 4, 7)], material)
+    if bevel: add_bevel(ob, bevel, segs); smooth(ob)
+    return ob
 
 
 def menu():
-    """A standing tent card, B's shape (108 wide at the base, 76 at the top, 104 high), moved left to x 460..568."""
+    """A bar menu on the counter: a leather-covered board (deep bottle-green pebbled leather, stitched round
+    its turned edge, gold foil frame, MENU and a vine device stamped into it) leaning back in a polished brass
+    stand: a base plate with a front lip the board sits behind, and a strut behind it."""
     Y = -0.75; yb = surface_y(Y)
-    m = bpy.data.materials.new('menu_face'); m.use_nodes = True; nt = m.node_tree
-    tex = nt.nodes.new('ShaderNodeTexImage'); tex.image = bpy.data.images.load(menu_texture())
-    b = nt.nodes['Principled BSDF']; nt.links.new(tex.outputs['Color'], b.inputs['Base Color'])
-    b.inputs['Roughness'].default_value = 0.42; b.inputs['Coat Weight'].default_value = 0.3
-    h = 104; tilt = 0.24
-    vs = [P(460, yb, -tilt), P(568, yb, -tilt), P(552, yb - h, 0), P(476, yb - h, 0)]
-    o = P(514, yb, 0); vs = [v - o for v in vs]
-    face = mesh_obj('menu_face', vs, [(0, 1, 2, 3)], m); face.location = o
-    uv = face.data.uv_layers.new(); [setattr(uv.data[i], 'uv', c) for i, c in enumerate(((0, 0), (1, 0), (1, 1), (0, 1)))]
-    sol = face.modifiers.new('sol', 'SOLIDIFY'); sol.thickness = 0.03; sol.offset = 1
-    face.data.materials.append(M_GREEN); sol.material_offset = 1; sol.material_offset_rim = 1
-    back = mesh_obj('menu_back', [P(460, yb, tilt) - o, P(568, yb, tilt) - o, P(552, yb - h, 0) - o, P(476, yb - h, 0) - o],
-                    [(3, 2, 1, 0)], M_GREEN); back.location = o
-    sb = back.modifiers.new('sol', 'SOLIDIFY'); sb.thickness = 0.03
-    parts = [face, back]
-    g = group('menu', parts, Y)
+    o = P(514, yb, 0)
+    face_m = _menu_face_material()
+    # the board: a rounded rectangle 8 mm thick, edges rounded over by a bevel (the leather turned round)
+    bm = bmesh.new(); outline = []
+    for cx_, cz_, a0 in ((MENU_W / 2 - MENU_R, MENU_R, -90), (MENU_W / 2 - MENU_R, MENU_H - MENU_R, 0),
+                         (-MENU_W / 2 + MENU_R, MENU_H - MENU_R, 90), (-MENU_W / 2 + MENU_R, MENU_R, 180)):
+        for i in range(9):
+            a = math.radians(a0 + 90 * i / 8); outline.append((cx_ + MENU_R * math.cos(a), cz_ + MENU_R * math.sin(a)))
+    fr = [bm.verts.new((x, 0.0, z)) for x, z in outline]
+    bk = [bm.verts.new((x, MENU_T, z)) for x, z in outline]
+    front = bm.faces.new(list(reversed(fr))); back = bm.faces.new(bk)
+    nO = len(outline)
+    for i in range(nO):
+        j = (i + 1) % nO; bm.faces.new((fr[i], fr[j], bk[j], bk[i]))
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    uvl = bm.loops.layers.uv.new()
+    for f in bm.faces:
+        for lp in f.loops:
+            v = lp.vert.co; lp[uvl].uv = ((v.x + MENU_W / 2) / MENU_W, v.z / MENU_H)
+    me = bpy.data.meshes.new('menu_board'); bm.to_mesh(me); bm.free()
+    board = bpy.data.objects.new('menu_board', me); link(board)
+    board.data.materials.append(face_m); board.data.materials.append(M_GREEN)
+    for p in board.data.polygons:
+        if p.normal.y > 0.5: p.material_index = 1
+    bv = add_bevel(board, 0.008, 4); bv.harden_normals = False; smooth(board)
+    board.modifiers.new('wn', 'WEIGHTED_NORMAL').keep_sharp = True
+    board.rotation_euler = (math.radians(-9), 0, 0)
+    board.location = o + Vector((0, -0.045, 0.016))
+    # the brass stand: base plate, front lip, a rod strut from the board's back down to the counter
+    plate = _menu_block('menu_plate', -0.53, 0.53, -0.078, 0.11, 0.0, 0.016, M_GOLD, 0.006)
+    lip = _menu_block('menu_lip', -0.53, 0.53, -0.078, -0.06, 0.0, 0.07, M_GOLD, 0.0075, 4)
+    for ob in (plate, lip): ob.location = o
+    top = Vector((0, MENU_T * math.cos(math.radians(9)) + 0.58 * math.sin(math.radians(9)) - 0.045 + 0.004, 0.58 + 0.016))
+    st = curve_obj('menu_strut', [[tuple(o + top), tuple(o + Vector((0, 0.24, 0.3))), tuple(o + Vector((0, 0.40, 0.01)))]], 0.011, M_GOLD)
+    st = _bake_curve(st)
+    hinge = _menu_block('menu_hinge', -0.05, 0.05, 0.0, 0.012, -0.04, 0.04, M_GOLD, 0.004)
+    hinge.location = o + top + Vector((0, -0.004, 0)); hinge.rotation_euler = (math.radians(-9), 0, 0)
+    foot = _menu_block('menu_foot', -0.045, 0.045, 0.37, 0.43, 0.0, 0.01, M_GOLD, 0.004); foot.location = o
+    parts = [board, plate, lip, st, hinge, foot]
+    group('menu', parts, Y)
+    # a soft warm light for the menu alone (light linking), where the foil mirrors it back to the camera:
+    # in front, a little above and left of the eye line, so MENU and the frame catch it as a glint
+    rc = bpy.data.collections.new('menu_lit')
+    for ob in parts: rc.objects.link(ob)
+    bpy.context.view_layer.update()
+    c0 = board.matrix_world @ Vector((0, 0, MENU_H * 0.5))
+    ld = bpy.data.lights.new('menu_soft', 'AREA'); ld.energy = MENU_SOFT; ld.color = srgb('#ffe0ad')[:3]
+    ld.shape = 'RECTANGLE'; ld.size = 1.4; ld.size_y = 0.7
+    lo = bpy.data.objects.new('menu_soft', ld); link(lo)
+    lo.location = c0 + Vector((-0.45, -3.4, 0.75))
+    lo.rotation_euler = (c0 - lo.location).to_track_quat('-Z', 'Y').to_euler()
+    lo.visible_camera = False
+    lo.light_linking.receiver_collection = rc
     return parts
 
 
