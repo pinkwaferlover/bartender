@@ -157,8 +157,8 @@
     "img/dio/painted/reach/0028.webp"
    ],
    "fps": 8.5,
-   "hold": 22,
-   "secondsPerFrame": 4.1
+   "hold": 24,
+   "secondsPerFrame": 4.3
   },
   "story": {
    "frames": [
@@ -354,7 +354,7 @@
       "img/dio/white/reach/0028.webp"
      ],
      "fps": 8.5,
-     "hold": 22,
+     "hold": 24,
      "secondsPerFrame": 5.3
     },
     "story": {
@@ -551,8 +551,8 @@
       "img/dio/living/reach/0028.webp"
      ],
      "fps": 8.5,
-     "hold": 22,
-     "secondsPerFrame": 3.5
+     "hold": 24,
+     "secondsPerFrame": 3.4
     },
     "story": {
      "frames": [
