@@ -216,7 +216,7 @@
    ],
    "fps": 8.5,
    "hold": 22,
-   "secondsPerFrame": 4.2
+   "secondsPerFrame": 4.4
   }
  },
  "finishes": {
@@ -413,7 +413,7 @@
      ],
      "fps": 8.5,
      "hold": 22,
-     "secondsPerFrame": 5.5
+     "secondsPerFrame": 5.4
     }
    }
   },
@@ -610,7 +610,7 @@
      ],
      "fps": 8.5,
      "hold": 22,
-     "secondsPerFrame": 3.5
+     "secondsPerFrame": 3.4
     }
    }
   }
