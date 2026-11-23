@@ -296,16 +296,22 @@ def sdir(phi, th, side):
     return Vector((side * math.cos(t_) * math.sin(p_), -math.cos(t_) * math.cos(p_), math.sin(t_)))
 
 
+def _ellipsoid_r(d):   # a smooth stand-in for the skull where the mesh has a hole (the ears)
+    ax = Vector((0.076, 0.098 if d.y < 0 else 0.094, 0.092))
+    return 1.0 / math.sqrt((d.x / ax.x) ** 2 + (d.y / ax.y) ** 2 + (d.z / ax.z) ** 2)
+
+
 def scalp(phi, th, side, off=0.0):
+    """The point of the scalp in direction (phi, th) from inside the head, pushed `off` outwards."""
     d = sdir(phi, th, side)
-    hit = HBVH.ray_cast(HO + d * 0.3, -d)
-    if hit[0] is None: return HO + d * (0.09 + off)
-    return hit[0] + d * off
+    hit = HBVH.ray_cast(HO, d, 0.2)
+    rr = (hit[0] - HO).length if hit[0] is not None else _ellipsoid_r(d)
+    return HO + d * (rr + off)
 
 
 def hairline_th(phi):
     """Elevation of the hairline: high and rounded over the forehead, lower at the temples, above the ears."""
-    z_ = float(np.interp(phi, (0, 25, 55, 80, 100, 180), (brow_z + 0.040, brow_z + 0.034, brow_z + 0.016,
+    z_ = float(np.interp(phi, (0, 25, 55, 80, 100, 180), (brow_z + 0.047, brow_z + 0.036, brow_z + 0.016,
                                                           brow_z - 0.006, brow_z - 0.012, brow_z - 0.07)))
     lo, hi = -70.0, 89.0
     for _ in range(30):
@@ -371,29 +377,30 @@ def catmull(ctrl, n):
 
 
 # the waves: from the parting (front to crown) sideways and back to the knot
-R_W = 0.0105                   # a wave's tube radius (rig metres)
+R_W = 0.0125                   # a wave's tube radius (rig metres)
 CAP = 0.006
-NW = 9
-t_wave = taper_curve('wave', [(0, 0.55), (0.12, 1.0), (0.75, 1.0), (1.0, 0.6)])
+NW = 8
+t_wave = taper_curve('wave', [(0, 0.35), (0.14, 1.0), (0.75, 1.0), (1.0, 0.6)])
 for side in (-1, 1):
     for i in range(NW):
         u = i / (NW - 1)
-        th0 = hl(0) + 2 + (104 - hl(0) - 2) * u ** 0.9
-        front_path = [(1.5, th0), (28, hl(28) + 3.5), (58, hl(58) + 4.5), (88, hl(88) + 6), (122, hl(122) + 9), (152, -2), (172, -4)]
-        crown_path = [(1.5, th0), (25, th0 - 12), (60, 62), (100, 40), (135, 20), (158, 6), (174, 0)]
+        th0 = hl(0) + 2 + (98 - hl(0) - 2) * u ** 0.9
+        front_path = [(4, th0), (28, hl(28) + 3.5), (58, hl(58) + 4.5), (88, hl(88) + 6), (122, hl(122) + 9), (152, -2), (172, -4)]
+        crown_path = [(4, th0), (25, th0 - 12), (60, 62), (100, 40), (135, 20), (158, 6), (174, 0)]
         ctrl = [tuple(np.array(f_) * (1 - u) + np.array(c_) * u) for f_, c_ in zip(front_path, crown_path)]
-        ctrl[0] = (1.5, th0)
+        ctrl[0] = (4, th0)
         path = catmull(ctrl, 46)
         pts_ = []; s_acc = 0.0; prev = None
         raw = [scalp(ph, th, side, 0) for ph, th in path]
         for j, (ph, th) in enumerate(path):
             if j: s_acc += (raw[j] - raw[j - 1]).length
-            wave = math.sin(2 * math.pi * s_acc / 0.032 + 0.4 * u)
+            wave = math.sin(2 * math.pi * s_acc / 0.042 + 0.5 * u)
             d = sdir(ph, th, side)
             tang = (raw[min(j + 1, len(raw) - 1)] - raw[max(j - 1, 0)]).normalized()
             lat = d.cross(tang).normalized()
-            off = CAP + R_W * 0.85 + 0.0035 * max(0.0, wave) - 0.002 * u * (j < 3)
-            pts_.append(raw[j] + d * off + lat * (0.0045 * wave * side))
+            root = max(0.0, 1 - j / 4)          # the roots dip into the parting, so it shows as a groove
+            off = CAP + R_W * (0.8 - 0.55 * root) + 0.003 * max(0.0, wave)
+            pts_.append(raw[j] + d * off + lat * (0.0065 * wave * side * (1 - root)))
         tube(f'wave{side}{i}', pts_, R_W * (1.0 - 0.12 * u), t_wave)
 
 # the knot at the back: a twisted roll of hair
@@ -428,8 +435,8 @@ for side in (-1, 1):
         corkscrew(st_, ln_, tw, 0.011, 0.0085, f'lock{side}{k}', (side * 0.016, -0.03 + 0.012 * k), bone='neck03')
 
 # ---------------------------------------------------------------- the ivy wreath on the hair, grapes at the temples
-WTH = lambda ph: float(np.interp(ph, (0, 45, 90, 135, 180), (hl(0) + 13, hl(45) + 16, hl(90) + 22, 12, 14)))
-W_OFF = CAP + 2 * R_W + 0.009
+WTH = lambda ph: float(np.interp(ph, (0, 45, 90, 135, 180), (hl(0) + 30, hl(45) + 30, hl(90) + 33, 18, 16)))
+W_OFF = CAP + 1.6 * R_W + 0.006
 NL = 15
 for side in (-1, 1):
     for i in range(NL + 1):
@@ -437,12 +444,17 @@ for side in (-1, 1):
         ph = 180 * i / NL
         pos = scalp(ph, WTH(ph), side, W_OFF); nrm = sdir(ph, WTH(ph), side)
         nxt = scalp(ph + 2, WTH(ph + 2), side, W_OFF); tang = (nxt - pos).normalized()
-        bin_ = tang.cross(nrm).normalized(); nrm = bin_.cross(tang).normalized()
-        rot = Matrix((tang, nrm, bin_)).transposed() @ Matrix.Rotation(math.radians(25 * (1 if i % 2 else -1)), 3, 'Y')
-        bpy.ops.mesh.primitive_uv_sphere_add(radius=0.021, segments=16, ring_count=8, location=(0, 0, 0)); lf = bpy.context.active_object
+        bin_ = tang.cross(nrm).normalized()
+        if bin_.z < 0: bin_, tang = -bin_, -tang          # the same way up on both sides
+        nrm = bin_.cross(tang).normalized()
+        # each leaf stands up off the hair, leaning out, alternately turned (ivy leaves on a band)
+        rot = (Matrix((tang, nrm, bin_)).transposed() @ Matrix.Rotation(math.radians(-30), 3, 'X')
+               @ Matrix.Rotation(math.radians(30 * (1 if i % 2 else -1)), 3, 'Y'))
+        bpy.ops.mesh.primitive_uv_sphere_add(radius=0.019, segments=16, ring_count=8, location=(0, 0, 0)); lf = bpy.context.active_object
+        lf.data.vertices.foreach_set('co', np.array([(x_, y_, z_ + 0.3 * 0.019 * (1 - (x_ / 0.019) ** 2) - 0.003 * (z_ < 0)) for x_, y_, z_ in (v.co for v in lf.data.vertices)]).ravel())
         lf.data.materials.append(M_IVY if (i + (side > 0)) % 2 else M_IVY2); smooth(lf)
         lf.parent = rig; lf.parent_type = 'BONE'; lf.parent_bone = 'head'
-        lf.matrix_world = rig.matrix_world @ Matrix.LocRotScale(pos, rot.to_quaternion(), Vector((1.0, 0.33, 0.72)))
+        lf.matrix_world = rig.matrix_world @ Matrix.LocRotScale(pos + bin_ * 0.008, rot.to_quaternion(), Vector((0.85, 0.22, 1.0)))
         EXTRA.append(lf)
 for side in (-1, 1):
     ph = 74
@@ -814,7 +826,7 @@ def render_loop(name):
         if STILL:
             k = K * STILL_SCALE
             if STILL_CROP == 'head':
-                region = bbox_world([o for o in EXTRA if o.type == 'CURVE' or o.name == 'haircap'] + [o for o in EXTRA if o.parent_bone == 'head'], 14)
+                hx, hy = world_units(rig.matrix_world @ rig.pose.bones['head'].tail); region = (hx - 85, hy - 25, hx + 85, hy + 150)
             elif STILL_CROP == 'grip':
                 gx, gy = world_units(fist_point('R')); region = (gx - 70, gy - 60, gx + 70, gy + 60)
         t0 = time.time()
