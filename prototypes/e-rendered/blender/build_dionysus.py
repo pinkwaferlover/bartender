@@ -8,6 +8,13 @@ Run from the repository root:
     .venv-blender/bin/python prototypes/e-rendered/blender/build_dionysus.py --preview   # one still per loop
     .venv-blender/bin/python prototypes/e-rendered/blender/build_dionysus.py             # all loops
     .venv-blender/bin/python prototypes/e-rendered/blender/build_dionysus.py --only stir # one loop
+Options:
+    --finish painted|white|living   Q8 finish (default painted). Loops for white/living go to img/dio-<finish>/
+                                    and dio-loops-<finish>.json; previews to _work/preview_<loop>_<finish>.png.
+    --still <loop> [--frame N] [--crop full|head|grip] [--scale k] [--out DIR]
+                                    one frame for inspection (default: middle frame, full rect, scale 1), written
+                                    to DIR/still_<finish>_<loop>_<NN>_<crop>.png (default DIR: blender/_work);
+                                    head and grip are close-ups around his head and right fist.
 
 It reuses build_bar.py's scene, camera and lights (without writing any of build_bar's outputs), so his
 light matches the bar, and renders him alone on a transparent film in one fixed world rectangle, which
@@ -95,7 +102,7 @@ def _node_mix(n, L, fac, a, b_):
     return m_.outputs['Result']
 
 
-def marble_material(name='marble', paint=True, lo='#b9b3ab', hi='#efe8de', rough=0.38):
+def marble_material(name='marble', paint=True, lo='#b9b3ab', hi='#efe8de', rough=0.38, hem=False):
     m = bpy.data.materials.new(name); m.use_nodes = True
     nt = m.node_tree; n = nt.nodes; L = nt.links
     b = n['Principled BSDF']
@@ -115,6 +122,14 @@ def marble_material(name='marble', paint=True, lo='#b9b3ab', hi='#efe8de', rough
     if paint:   # lips and cheeks, from the body's 'paint' colour attribute (alpha = how much paint)
         attr = n.new('ShaderNodeAttribute'); attr.attribute_name = 'paint'
         col_ = _node_mix(n, L, attr.outputs['Alpha'], col_, attr.outputs['Color'])
+    if hem:     # a carved border along the drape's edges: a faintly darker band with a groove line
+        ed = n.new('ShaderNodeAttribute'); ed.attribute_name = 'edge'
+        rp = n.new('ShaderNodeValToRGB'); cr = rp.color_ramp; cr.interpolation = 'CONSTANT'
+        cr.elements[0].color = (1, 1, 1, 1); cr.elements[1].position = 0.66; cr.elements[1].color = (0.55, 0.55, 0.55, 1)
+        e = cr.elements.new(0.71); e.color = (0.8, 0.8, 0.8, 1)
+        L.new(ed.outputs['Fac'], rp.inputs['Fac'])
+        mm = n.new('ShaderNodeMix'); mm.data_type = 'RGBA'; mm.blend_type = 'MULTIPLY'; mm.inputs['Factor'].default_value = 1.0
+        L.new(col_, mm.inputs['A']); L.new(rp.outputs['Color'], mm.inputs['B']); col_ = mm.outputs['Result']
     L.new(col_, b.inputs['Base Color'])
     return m
 
@@ -124,17 +139,17 @@ def skin_material():
     m = bpy.data.materials.new('skin'); m.use_nodes = True
     nt = m.node_tree; n = nt.nodes; L = nt.links
     b = n['Principled BSDF']
-    b.inputs['Roughness'].default_value = 0.46
-    b.inputs['Subsurface Weight'].default_value = 1.0
-    b.inputs['Subsurface Radius'].default_value = (1.0, 0.42, 0.25)
-    b.inputs['Subsurface Scale'].default_value = 0.025 * S       # a few millimetres of skin, at his scale
+    b.inputs['Roughness'].default_value = 0.5
+    b.inputs['Subsurface Weight'].default_value = 0.8
+    b.inputs['Subsurface Radius'].default_value = (1.0, 0.4, 0.22)
+    b.inputs['Subsurface Scale'].default_value = 0.006 * S       # a few millimetres of skin, at his scale
     b.inputs['Specular IOR Level'].default_value = 0.45
     tc = n.new('ShaderNodeTexCoord')
     nz = n.new('ShaderNodeTexNoise'); nz.inputs['Scale'].default_value = 9.0; nz.inputs['Detail'].default_value = 3.0
     L.new(tc.outputs['Object'], nz.inputs['Vector'])
-    col_ = _node_mix(n, L, nz.outputs['Fac'], srgb('#b77a5c'), srgb('#d29b7c'))
+    col_ = _node_mix(n, L, nz.outputs['Fac'], srgb('#b98a70'), srgb('#cfa088'))
     attr = n.new('ShaderNodeAttribute'); attr.attribute_name = 'paint'
-    k = n.new('ShaderNodeMath'); k.operation = 'MULTIPLY'; k.inputs[1].default_value = 0.45
+    k = n.new('ShaderNodeMath'); k.operation = 'MULTIPLY'; k.inputs[1].default_value = 0.6
     L.new(attr.outputs['Alpha'], k.inputs[0])
     col_ = _node_mix(n, L, k.outputs[0], col_, attr.outputs['Color'])
     br = n.new('ShaderNodeAttribute'); br.attribute_name = 'brow'
@@ -202,10 +217,10 @@ elif FINISH == 'white':
     M_EYE = M_SKIN                                       # blank classical eyes
     M_HAIR = marble_material('hair_white', paint=False, lo='#bfb7aa', hi='#ece5d9', rough=0.45)
     M_IVY = M_IVY2 = M_GRAPE = M_HAIR
-    M_HIMATION = marble_material('drape_white', paint=False, lo='#c6c0b6', hi='#efe9df', rough=0.42)
+    M_HIMATION = marble_material('drape_white', paint=False, lo='#a39b90', hi='#d6cdbf', rough=0.6, hem=True)
 else:
     M_SKIN = skin_material()
-    M_EYE = eye_material(iris='#4b2f1d', pupil='#0b0806', white='#e9e1d7', name='eye_living', gloss=1.0)
+    M_EYE = eye_material(iris='#6a4428', pupil='#0b0806', white='#cdbfb1', name='eye_living', gloss=1.0)
     M_HAIR = mat('hair_living', '#2e1d14', 0.42)
     M_HAIR.node_tree.nodes['Principled BSDF'].inputs['Sheen Weight'].default_value = 0.4
     M_IVY = mat('ivy_living', '#3d7330', 0.4); M_IVY2 = mat('ivy_living2', '#2b5a24', 0.4)
@@ -599,11 +614,13 @@ def prop_cloth():
 
 
 def prop_thyrsus():
-    st = lathe('p_staff', [(-1.5, 0.022), (1.35, 0.022)], M_WOOD, 16)
-    cone = lathe('p_cone', [(1.3, 0.0), (1.33, 0.07), (1.45, 0.095), (1.58, 0.07), (1.66, 0.02), (1.68, 0)], M_CONE, 24)
+    """Origin at the staff's lower end (in the glass); held about 0.75 up, the pine cone 1.35 above the hand."""
+    o_ = 0.78
+    st = lathe('p_staff', [(0.0, 0.0), (0.0, 0.02), (0.01, 0.025), (1.35 + o_, 0.025)], M_WOOD, 16)
+    cone = lathe('p_cone', [(z_ + o_, r_) for z_, r_ in ((1.3, 0.0), (1.33, 0.07), (1.45, 0.095), (1.58, 0.07), (1.66, 0.02), (1.68, 0))], M_CONE, 24)
     cone.parent = st
     for i in range(4):   # ribbons of ivy under the cone
-        bpy.ops.mesh.primitive_uv_sphere_add(radius=0.04, segments=12, ring_count=6, location=(0.05 * math.cos(i * 1.6), 0.05 * math.sin(i * 1.6), 1.26 - i * 0.03))
+        bpy.ops.mesh.primitive_uv_sphere_add(radius=0.04, segments=12, ring_count=6, location=(0.05 * math.cos(i * 1.6), 0.05 * math.sin(i * 1.6), 1.26 + o_ - i * 0.03))
         lf = bpy.context.active_object; lf.scale = (1, 0.35, 0.7); lf.data.materials.append(M_IVY); smooth(lf); lf.parent = st
     return [st, cone] + [o for o in bpy.data.objects if o.parent == st and o not in (cone,)]
 
@@ -794,7 +811,7 @@ def hold_staff(side, tip, root, turns=4):
         wb.matrix = m.inverted() @ Rw @ m @ wb.matrix
     bpy.context.view_layer.update()
     g = fist_point(side)
-    root.matrix_world = axis_matrix(g, (g - tip).normalized())
+    root.matrix_world = axis_matrix(tip, (g - tip).normalized())
     bpy.context.view_layer.update()
     print(f'[grip] fist axis vs staff: {math.degrees(fist_axis(side).angle((g - tip).normalized())):.1f} deg', flush=True)
 
