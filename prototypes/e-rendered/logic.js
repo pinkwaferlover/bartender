@@ -51,9 +51,17 @@ const BAR = {
   have: new Set(['bourbon', 'sweet vermouth']),
   barware: new Set(),
   filled: false,
+  out: new Set(),   // Bottles marked run out on Your bar: they stay on the shelf, dusty, and drinks that need them say so
 };
+try { const v = JSON.parse(localStorage.getItem('dio-bar') || 'null'); if (v && Array.isArray(v.out)) v.out.forEach(k => { BAR.out.add(k); BAR.have.delete(k); }); } catch (e) {}
+function saveBar() { try { localStorage.setItem('dio-bar', JSON.stringify({ out: [...BAR.out] })); } catch (e) {} }
+/* Your bar: tap a Bottle to mark it run out, tap again when you've bought more */
+function setRunOut(k, out) {
+  if (out) { BAR.have.delete(k); BAR.out.add(k); } else { BAR.out.delete(k); BAR.have.add(k); }
+  saveBar();
+}
 const isBottle = k => ['spirit', 'wine', 'liqueur', 'bitters', 'mixer'].includes((ING[k] || [])[1]);
-const shelfBottles = () => [...BAR.have].filter(isBottle).map(k => ({ k, style: ING[k][0], kind: ING[k][1], colour: ING[k][2], family: ING[k][3] }))
+const shelfBottles = () => [...new Set([...BAR.have, ...BAR.out])].filter(isBottle).map(k => ({ k, style: ING[k][0], kind: ING[k][1], colour: ING[k][2], family: ING[k][3], out: BAR.out.has(k) }))
   .sort((a, b) => ORDER.indexOf(a.family) - ORDER.indexOf(b.family));
 const ORDER = ['whisky', 'gin', 'vodka', 'rum', 'tequila', 'brandy', 'aperitif', 'bitters', 'mixer'];
 
@@ -76,7 +84,7 @@ function readPhotos(ids) {
   return { found: [...found], tools: [...tools] };
 }
 function applyReading(res, toolsTicked) {
-  res.found.forEach(k => BAR.have.add(k));
+  res.found.forEach(k => { if (!BAR.out.has(k)) BAR.have.add(k); });   // what you marked run out stays run out
   BAR.barware = new Set(toolsTicked);
   BAR.filled = true;
 }
@@ -120,6 +128,12 @@ function worthBuying(exceptId) {
   const opts = near.filter(r => missingFor(r)[0].k === best && r.id !== exceptId);
   if (!opts.length) return null;
   return { r: opts[Math.floor(Math.random() * opts.length)], bottle: best, opens: count[best] };
+}
+/* One bottle away: each missing Bottle with the drinks it alone would open, most first */
+function oneBottleAway() {
+  const m = {};
+  R.forEach(r => { const x = missingFor(r); if (x.length === 1 && isBottle(x[0].k)) (m[x[0].k] = m[x[0].k] || []).push(r); });
+  return Object.entries(m).sort((a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0]));
 }
 /* Returns { r, worth } (worth is null for a drink you can make), or null when there is nothing to draw. */
 function barmansChoice(exceptId) {

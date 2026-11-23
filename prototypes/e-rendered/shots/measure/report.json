@@ -11,7 +11,7 @@
   "choice": {
    "taps": 1,
    "recipe": true,
-   "kicker": "🎲 Barman’s choice"
+   "kicker": "Barman’s choice"
   },
   "phoneChoice": {
    "recipe": true
@@ -57,7 +57,7 @@
    "waiting": true
   }
  },
- "weightMB": 1.4,
- "files": 51,
+ "weightMB": 1.46,
+ "files": 52,
  "errors": []
 }

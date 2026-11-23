@@ -1,6 +1,8 @@
 /* Prototype E: Rendered. Prototype B's layout, logic and zoom model, with the bar rendered in Blender.
    The camera is still the SVG viewBox, in B's world units. The background is one rendered picture per camera
    position; touchables and bottles are separate rendered layers; Dionysus is his own layer (dio-layer.js). */
+/* Halo's step glyphs (src/anim.js, copied unchanged). Loaded first, before anything can open a recipe. */
+(function loadAnim() { const s = document.createElement('script'); s.src = 'anim.js'; s.async = false; document.head.append(s); })();
 const $ = s => document.querySelector(s);
 const NS = 'http://www.w3.org/2000/svg';
 const svg = $('#scene');
@@ -12,6 +14,81 @@ const seg = (p, a, b) => clamp((p - a) / (b - a), 0, 1);
 const isPhone = () => innerWidth <= 640;
 const RM = reduceMotion();
 const wait = ms => new Promise(r => setTimeout(r, ms));
+const esc = t => String(t).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+/* ---------------- Halo's drawings and pieces (src/app.js), renamed where E already uses the name ---------------- */
+/* The brief's four Feels drawn with Halo's feel icons */
+const FEEL_ICON4 = { rich: 'sweet', sharp: 'fresh', bitter: 'bitter', dry: 'strong' };
+const feelIcon = (r, h) => feelIco(FEEL_ICON4[feelOf(r)], h);
+const stepsTotal = r => r.steps.reduce((a, s) => a + (s[1] || 0), 0);
+const LONGEST = Math.max(...R.map(stepsTotal));
+const fmt = s => s >= 60 ? `${Math.floor(s / 60)} min${s % 60 ? ' ' + (s % 60) + ' s' : ''}` : `${s} s`;
+/* pies are static labels: prep time against the longest recipe, seconds for a shake or stir. Never a countdown (R6). */
+const pie = (f, size, col = 'var(--acc)') => `<svg viewBox="0 0 40 40" width="${size}" height="${size}" aria-hidden="true"><circle cx="20" cy="20" r="17" fill="var(--faint)"/><path d="${arc(20, 20, 17, 0, Math.min(f, 1))}" fill="${col}"/></svg>`;
+const timePie = (r, size) => pie(stepsTotal(r) / LONGEST, size);
+const ICON = {
+  back: `<svg viewBox="0 0 40 40" width="28" height="28" aria-hidden="true"><path d="M24 8 L12 20 L24 32" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+  mic: `<svg viewBox="0 0 40 40" width="24" height="24" aria-hidden="true"><rect x="14" y="5" width="12" height="20" rx="6" fill="currentColor"/><path d="M9 19 q0 11 11 11 q11 0 11 -11 M20 30 v6" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/></svg>`,
+};
+/* Halo's two dice, drawn in 3D. They sit in panels; on the counter the rendered panther and die stay the touchable. */
+const PIPS = { 1: [5], 2: [1, 9], 3: [1, 5, 9], 4: [1, 3, 7, 9], 5: [1, 3, 5, 7, 9], 6: [1, 3, 4, 6, 7, 9] };
+const dFace = (n, cls) => `<div class="face ${cls}">${[1, 2, 3, 4, 5, 6, 7, 8, 9].map(p => `<i${PIPS[n].includes(p) ? ' class="on"' : ''}></i>`).join('')}</div>`;
+const oneDie = k => `<div class="die ${k}">${dFace(1, 'f1')}${dFace(6, 'f6')}${dFace(2, 'f2')}${dFace(5, 'f5')}${dFace(3, 'f3')}${dFace(4, 'f4')}</div>`;
+const diceHTML = size => `<span class="dice" style="--ds:${size}px"><span class="pair">${oneDie('d1')}${oneDie('d2')}</span></span>`;
+function rollDice(box, then) {
+  if (!box || box.classList.contains('rolling')) return;
+  if (RM) return then();
+  box.classList.add('rolling');
+  box.querySelectorAll('.die').forEach((d, n) => {
+    const x = 720 + 90 * Math.floor(Math.random() * 4), y = 720 + 90 * Math.floor(Math.random() * 4), z = n ? -30 : 25;
+    d.style.transition = 'transform 1.05s cubic-bezier(.15,.75,.25,1)';
+    d.style.transform = `rotateX(${x}deg) rotateY(${y}deg) rotateZ(${z}deg)`;
+  });
+  setTimeout(then, 1150);
+}
+/* Halo's strip: follows the finger, carries momentum, settles on a card. A drag never counts as a tap. */
+class Strip {
+  constructor(host, o) {
+    this.h = host; this.track = host.querySelector('.track'); this.items = [...this.track.children]; this.n = this.items.length;
+    this.w = o.itemW; this.gap = o.gap ?? 22; this.pad = o.pad ?? 24;
+    this.items.forEach(e => { e.style.width = this.w + 'px'; });
+    this.W = host.clientWidth; this.step = this.w + this.gap;
+    this.maxX = this.pad; this.minX = Math.min(this.maxX, this.W - this.pad - this.n * this.step + this.gap);
+    this.x = this.maxX; this.raf = 0; this.dragged = false;
+    this.bind(); this.draw();
+  }
+  clamp(x) { return Math.max(this.minX, Math.min(this.maxX, x)); }
+  draw() { this.items.forEach((e, k) => { e.style.transform = `translate3d(${(this.x + k * this.step).toFixed(1)}px,0,0)`; }); }
+  animateTo(target) {
+    cancelAnimationFrame(this.raf);
+    if (RM) { this.x = target; return this.draw(); }
+    const x0 = this.x, t0 = performance.now(), dur = 520, ez = t => 1 - Math.pow(1 - t, 4);
+    const tick = now => { const t = Math.min(1, (now - t0) / dur); this.x = x0 + (target - x0) * ez(t); this.draw(); if (t < 1) this.raf = requestAnimationFrame(tick); };
+    this.raf = requestAnimationFrame(tick);
+  }
+  settle(v) { const proj = this.x + v * 260, k = Math.round((this.maxX - proj) / this.step); this.animateTo(this.clamp(this.maxX - k * this.step)); }
+  bind() {
+    let p = null, samples = [];
+    this.h.addEventListener('pointerdown', e => { cancelAnimationFrame(this.raf); this.dragged = false; p = { x: e.clientX, x0: this.x, moved: false, id: e.pointerId }; samples = [[performance.now(), this.x]]; });
+    this.h.addEventListener('pointermove', e => {
+      if (!p) return; const dx = e.clientX - p.x;
+      if (Math.abs(dx) > 6 && !p.moved) { p.moved = this.dragged = true; try { this.h.setPointerCapture(p.id); } catch (_) {} }
+      if (!p.moved) return;
+      let x = p.x0 + dx; if (x > this.maxX) x = this.maxX + (x - this.maxX) * .35; if (x < this.minX) x = this.minX + (x - this.minX) * .35;
+      this.x = x; this.draw(); samples.push([performance.now(), x]); if (samples.length > 6) samples.shift();
+    });
+    const up = () => {
+      if (!p) return; const was = p; p = null; if (!was.moved) return;
+      const [t0, x0] = samples[0], [t1, x1] = samples[samples.length - 1]; this.settle(t1 > t0 ? (x1 - x0) / (t1 - t0) : 0);
+    };
+    this.h.addEventListener('pointerup', up); this.h.addEventListener('pointercancel', () => { if (p) { p = null; this.settle(0); } });
+    this.h.addEventListener('click', e => { if (this.dragged) { e.stopPropagation(); e.preventDefault(); this.dragged = false; } }, true);
+    let wt; this.h.addEventListener('wheel', e => { if (Math.abs(e.deltaX) <= Math.abs(e.deltaY)) return; e.preventDefault(); cancelAnimationFrame(this.raf); this.x = this.clamp(this.x - e.deltaX); this.draw(); clearTimeout(wt); wt = setTimeout(() => this.settle(0), 120); }, { passive: false });
+    /* keyboard: a focused card is brought into view by the strip, not by the browser scrolling it */
+    this.h.addEventListener('focusin', e => { this.h.scrollLeft = 0; const k = this.items.indexOf(e.target.closest('.track > *')); if (k < 0) return;
+      const left = this.x + k * this.step; if (left < this.pad || left + this.w > this.W - this.pad) this.animateTo(this.clamp(this.pad - k * this.step)); });
+  }
+}
 const img = (L, parent, attrs = {}) => el('image', { href: L.src, x: L.x, y: L.y, width: L.w, height: L.h, preserveAspectRatio: 'none', ...attrs }, parent);
 
 /* ---------------- The rendered layers ---------------- */
@@ -47,10 +124,10 @@ function drawShelf(animate) {
     const x = side ? 800 + gap / 2 + j * step + 2 : 800 - gap / 2 - (span - j) * step + 2;
     const L = LAYERS.bottles[b.k]; if (!L) return;
     const outer = el('g', { transform: `translate(${(x + step / 2 - L.ax).toFixed(1)} 0)` }, g);
-    const inner = el('g', { class: 'btl' + (BAR.filled ? '' : ' dusty') }, outer);
+    const inner = el('g', { class: 'btl' + (BAR.filled && !b.out ? '' : ' dusty') }, outer);
     img(L, inner);
-    el('title', {}, inner).textContent = `${b.style} (${FAMILIES[b.family] || b.family})`;
-    if (animate && !RM) inner.style.animation = `drop .7s ${0.06 * i}s cubic-bezier(.3,1.4,.5,1) both`;
+    el('title', {}, inner).textContent = `${b.style} (${FAMILIES[b.family] || b.family})${b.out ? ', run out' : ''}`;
+    if (animate && !RM) inner.style.animation = `bdrop .7s ${0.06 * i}s cubic-bezier(.3,1.4,.5,1) both`;
   });
 }
 drawShelf();
@@ -79,18 +156,59 @@ function shotRect(name) {
 }
 function cam(name, dur = 900) {
   shotName = name; showPatch(name); const to = shotRect(name), from = vb.slice();
-  if (RM || dur === 0) { vb = to; setVB(); return Promise.resolve(); }
+  if (RM || dur === 0) { vb = to; setVB(); sizeHits(); return Promise.resolve(); }
   const t0 = performance.now();
   return new Promise(res => {
-    camAnim = now => { const p = ease(clamp((now - t0) / dur, 0, 1)); vb = from.map((v, i) => lerp(v, to[i], p)); setVB(); if (p >= 1) { camAnim = null; res(); } };
+    camAnim = now => { const p = ease(clamp((now - t0) / dur, 0, 1)); vb = from.map((v, i) => lerp(v, to[i], p)); setVB(); if (p >= 1) { camAnim = null; sizeHits(); res(); } };
   });
 }
 const setVB = () => svg.setAttribute('viewBox', vb.map(v => v.toFixed(2)).join(' '));
-addEventListener('resize', () => { vb = shotRect(shotName); setVB(); placeBubble(); });
+addEventListener('resize', () => { vb = shotRect(shotName); setVB(); placeBubble(); sizeHits(); });
 vb = shotRect('intro'); setVB(); showPatch('intro');
 
 /* ---------------- Dionysus: his own layer ---------------- */
 const dio = makeDio($('#dio'));
+
+/* ---------------- Touchables in a dark bar ----------------
+   Each counter touchable's art moves into a .lift group (rim light, lift on press), with a .ring for keyboard focus
+   and a transparent .hit grown to at least 44 CSS px. A pool of lamplight on the counter beneath each one wakes
+   when it is touched; the pools live in their own group so the touchables' own boxes stay tight. */
+const LIFTED = ['honey', 'menu', 'lamp', 'panther'];
+(function liftTouchables() {
+  const defs = svg.querySelector('defs');
+  const gr = el('radialGradient', { id: 'poolGrad' }, defs);
+  el('stop', { offset: '0', 'stop-color': '#ffd08a', 'stop-opacity': '.75' }, gr); el('stop', { offset: '.55', 'stop-color': '#e2ae5c', 'stop-opacity': '.28' }, gr); el('stop', { offset: '1', 'stop-color': '#e2ae5c', 'stop-opacity': '0' }, gr);
+  const wrap = (host, nodes) => { const g = el('g', { class: 'lift' }); host.insertBefore(g, nodes[0]); nodes.forEach(n => g.appendChild(n)); return g; };
+  LIFTED.forEach(id => { const t = $('#' + id); wrap(t, [...t.children]); });
+  wrap($('#shelf'), [$('#bottles')]);
+  [...LIFTED, 'shelf'].forEach(id => { const t = $('#' + id);
+    t.insertBefore(el('rect', { class: 'hit' }), t.firstChild); t.appendChild(el('rect', { class: 'ring', rx: 8 })); });
+  const pools = el('g', { id: 'pools', 'pointer-events': 'none' }); svg.insertBefore(pools, $('#counterThings'));
+  LIFTED.forEach(id => {
+    const L = id === 'lamp' ? { x: 690 - 18, y: 655 - 100, w: 36, h: 100 } : id === 'panther' ? LAYERS.touch.panther : LAYERS.touch[id];
+    el('ellipse', { class: 'lpool', 'data-for': id, cx: L.x + L.w / 2, cy: L.y + L.h + 1, rx: Math.max(56, L.w * .85), ry: 18, fill: 'url(#poolGrad)' }, pools);
+  });
+  /* press: lift a little; keyboard: Enter or Space acts like a tap on any touchable */
+  svg.addEventListener('pointerdown', e => { const t = e.target.closest('.touch'); if (t) t.classList.add('pressed'); });
+  const unpress = () => document.querySelectorAll('.touch.pressed').forEach(t => t.classList.remove('pressed'));
+  addEventListener('pointerup', unpress); addEventListener('pointercancel', unpress); svg.addEventListener('pointerleave', unpress);
+  svg.addEventListener('keydown', e => { if (e.key !== 'Enter' && e.key !== ' ') return; const t = e.target.closest('.touch'); if (!t) return;
+    e.preventDefault(); e.stopPropagation(); t.dispatchEvent(new MouseEvent('click', { bubbles: true })); });
+})();
+/* 44 px targets at every camera position: hit and ring follow the art, in each touchable's own units */
+function sizeHits() {
+  [...LIFTED, 'shelf'].forEach(id => {
+    const t = $('#' + id), lift = t.querySelector('.lift'), hit = t.querySelector('.hit'), ring = t.querySelector('.ring');
+    if (!lift || !t.getScreenCTM()) return;
+    let b; try { b = id === 'shelf' ? $('#shelfHit').getBBox() : lift.getBBox(); } catch (_) { return; }
+    const m = t.getScreenCTM(), px = Math.hypot(m.a, m.b) || 1, min = 44 / px, pad = 5 / px;
+    if (!b.width) return;
+    const w = Math.max(b.width, min), h = Math.max(b.height, min);
+    if (id !== 'shelf') { hit.setAttribute('x', b.x + b.width / 2 - w / 2); hit.setAttribute('y', b.y + b.height / 2 - h / 2); hit.setAttribute('width', w); hit.setAttribute('height', h); }
+    ring.setAttribute('x', b.x - pad); ring.setAttribute('y', b.y - pad); ring.setAttribute('width', b.width + 2 * pad); ring.setAttribute('height', b.height + 2 * pad); ring.setAttribute('rx', 10 / px);
+  });
+}
+sizeHits();
 
 /* ---------------- Main loop ---------------- */
 let last = performance.now(), T = 0;
@@ -126,7 +244,7 @@ function placeBubble() {
   bubble.style.left = x + 'px'; bubble.style.top = y + 'px';
 }
 function speak(html, opts = {}) {
-  bubble.hidden = false; sayEl.innerHTML = html; sayEl.className = opts.cls || '';
+  bubble.hidden = false; sayEl.innerHTML = html; sayEl.className = opts.cls || ''; bubble.classList.toggle('storyb', opts.cls === 'story');
   chips.innerHTML = '';
   (opts.chips || []).forEach(c => {
     if (c.label === '|') { const d = document.createElement('span'); d.className = 'chipbreak'; d.textContent = c.text || ''; chips.appendChild(d); return; }
@@ -151,6 +269,10 @@ function home() {
   hush(); return cam('home');
 }
 $('#back').onclick = () => home();
+$('#back').innerHTML = ICON.back;
+/* Halo's search pill: talking to him is the search (Q3). The cycling words are things you can say (R12), never buttons. */
+$('#talkBtn').innerHTML = `<span class="tl">Talk to Dionysus</span><span class="cyc" aria-hidden="true">${['“warm me up”', '“something smoky”', '“after dinner”', '“gin, sharp and fresh”', '“nothing too strong”'].map((t, n) => `<em style="animation-delay:${n * 3}s">${t}</em>`).join('')}</span><span class="mi" aria-hidden="true">${ICON.mic}</span>`;
+$('#talkBtn').setAttribute('aria-label', 'Talk to Dionysus');
 addEventListener('keydown', e => { if (e.key === 'Escape' && screen !== 'home' && screen !== 'intro') home(); });
 function setScreen(name) { screen = name; $('#back').hidden = false; $('#talkBtn').hidden = true; clearScene(); }
 function lightUp(id) { document.querySelectorAll('.touch.lit').forEach(t => t.classList.remove('lit')); if (id) $('#' + id).classList.add('lit'); }
@@ -166,7 +288,7 @@ async function intro() {
   if (screen !== 'intro') return;
   screen = 'home'; $('#talkBtn').hidden = false;
   await wait(RM ? 0 : 500);
-  if (!BAR.filled) askWhatYouHave();
+  if (!BAR.filled && screen === 'home') askWhatYouHave();
 }
 
 /* 3. "What do you have?" Two routes (Q5): photos, or a list pasted from your own AI tool */
@@ -220,18 +342,19 @@ function openPaste() {
     confirmFound(res, res.unknown);
   };
 }
+const famName = k => isBottle(k) ? (FAMILIES[ING[k][3]] || { bitters: 'Bitters', mixer: 'Mixers' }[ING[k][3]] || 'Other') : 'In the kitchen';
 function confirmFound(res, unknown = []) {
-  const byKind = {}; res.found.forEach(k => { const f = isBottle(k) ? (FAMILIES[ING[k][3]] || { bitters: 'Bitters', mixer: 'Mixers' }[ING[k][3]] || 'Other') : 'In the kitchen'; (byKind[f] = byKind[f] || []).push(ING[k][0]); });
-  panel.innerHTML = `<h2>Here's what he found</h2><ul class="found">${Object.entries(byKind).map(([f, l]) => `<li><b>${f}</b>${l.join(', ')}</li>`).join('')}</ul>
+  const byKind = {}; res.found.forEach(k => { const f = famName(k); (byKind[f] = byKind[f] || []).push(k); });
+  panel.innerHTML = `<h2>Here's what he found</h2><ul class="found">${Object.entries(byKind).map(([f, l]) => `<li><b>${f}</b>${l.map(k => `<span class="fi">${ingIco(k, 22)}${esc(ING[k][0])}</span>`).join('')}</li>`).join('')}</ul>
    ${unknown.length ? `<p class="pasteNote">Not on his list yet: ${unknown.map(u => String(u).replace(/[<>&]/g, '')).join(', ')}</p>` : ''}
-   <p style="margin:0;font-weight:700">Barware: tick what you have</p>
+   <p class="lbl">Barware: tick what you have</p>
    <div class="ticks">${Object.entries(BARWARE).map(([k, v]) => `<label><input type="checkbox" value="${k}" ${res.tools.includes(k) ? 'checked' : ''}> ${v}</label>`).join('')}</div>
    <div class="row"><button class="btn ghost" id="pcancel">Not now</button><button class="btn" id="pstock">Stock the shelf</button></div>`;
   $('#pcancel').onclick = home;
   $('#pstock').onclick = async () => {
     const tools = [...panel.querySelectorAll('.ticks input:checked')].map(i => i.value);
     applyReading(res, tools); panel.hidden = true; drawShelf(true);
-    await wait(RM ? 0 : 1400); home();
+    await wait(RM ? 0 : 1400); await home();
     showHints();
     setTimeout(() => speak(`That's more like it. ${R.filter(canMake).length} drinks I can make you now. Tap the menu, or talk to me.`, { chips: [{ label: 'OK', cls: 'go', go: hush }] }), RM ? 0 : 950);
   };
@@ -242,49 +365,139 @@ function showHints() {
   [['menu', 'The menu'], ['panther', "Barman's choice"], ['shelf', 'Your shelf'], ['honey', 'Honey']].forEach(([id, t]) => {
     const r = $('#' + id).getBoundingClientRect(); if (!r.width) return;
     const p = document.createElement('span'); p.className = 'hint'; p.textContent = t;
-    p.style.left = (r.left + r.width / 2) + 'px'; p.style.top = Math.max(60, r.top - 34) + 'px'; box.appendChild(p);
+    p.style.left = clamp(r.left + r.width / 2, 64, innerWidth - 64) + 'px'; p.style.top = Math.max(60, r.top - 34) + 'px'; box.appendChild(p);
   });
   document.querySelectorAll('.touch').forEach(t => t.classList.add('hinting'));
   setTimeout(() => { box.innerHTML = ''; document.querySelectorAll('.touch').forEach(t => t.classList.remove('hinting')); }, 6000);
 }
-function openShelf() {
+/* The shelf becomes Halo's "Your bar": tap a Bottle to mark it run out (it stays on the shelf, dusty), and
+   "One bottle away": each Bottle you lack, with the drinks it alone would open. */
+let shelfTab = 'bar';
+function openShelf(tab) {
   if (!BAR.filled) return openPhotos();
+  if (tab) shelfTab = tab;
   hush(); setScreen('shelf'); cam('shelf');
-  const fam = {}; shelfBottles().forEach(b => (fam[FAMILIES[b.family] || 'Bitters and mixers'] = fam[FAMILIES[b.family] || 'Bitters and mixers'] || []).push(b.style));
-  panel.className = 'panel sheet shelfsheet'; panel.hidden = false;
-  panel.innerHTML = `<h2>Your shelf</h2><ul class="found">${Object.entries(fam).map(([f, l]) => `<li><b>${f}</b>${l.join(', ')}</li>`).join('')}</ul>
-   <p style="margin:0 0 10px;font-size:14px">Barware: ${[...BAR.barware].map(b => BARWARE[b]).join(', ') || 'none yet'}</p>
+  panel.className = 'panel sheet shelfsheet barsheet'; panel.hidden = false;
+  panel.innerHTML = `<div class="bhead"><h2>${shelfTab === 'bar' ? 'Your bar' : 'One bottle away'}</h2>
+     <div class="fbs" role="tablist">${[['bar', 'Your bar'], ['away', 'One bottle away']].map(([k, v]) => `<button class="fb" role="tab" data-t="${k}" aria-selected="${k === shelfTab}">${v}</button>`).join('')}</div></div>
+   <div id="barBody"></div>
    <div class="row"><button class="btn ghost" id="pmore">Add more</button><button class="btn" id="pdone">Back to the bar</button></div>`;
+  panel.querySelectorAll('.bhead .fb').forEach(b => b.onclick = () => { shelfTab = b.dataset.t; panel.querySelectorAll('.bhead .fb').forEach(x => x.setAttribute('aria-selected', x === b)); panel.querySelector('.bhead h2').textContent = b.textContent; fillBar(); });
   $('#pmore').onclick = openPhotos; $('#pdone').onclick = home;
+  fillBar();
+}
+function fillBar() {
+  const box = $('#barBody'); if (!box) return;
+  if (shelfTab === 'away') {
+    const m = oneBottleAway();
+    box.innerHTML = `<div class="away">${m.length ? m.map(([k, rs]) => `<div class="ar"><div class="ak">${ingIco(k, 48)}<span class="nm">${esc(ING[k][0])}</span><span class="un">+${rs.length} drink${rs.length > 1 ? 's' : ''}</span></div>
+      <div class="ad">${rs.map(r => `<button class="mini" data-id="${r.id}">${glassSide(r, 56)}<span>${esc(r.name)}</span></button>`).join('')}</div></div>`).join('') : '<p class="none">Nothing is one bottle away: you can make everything on the menu.</p>'}</div>`;
+    box.querySelectorAll('.mini').forEach(b => b.onclick = () => openRecipe(b.dataset.id));
+    return;
+  }
+  const fam = {}; shelfBottles().forEach(b => { const f = FAMILIES[b.family] || { bitters: 'Bitters', mixer: 'Mixers' }[b.family] || 'Other'; (fam[f] = fam[f] || []).push(b); });
+  const outN = BAR.out.size;
+  box.innerHTML = `<p class="sub">${shelfBottles().length - outN} bottles${outN ? ` · ${outN} run out` : ''}. Tap a bottle when it runs out.</p>
+   <div class="bfams">${Object.entries(fam).map(([f, l]) => `<section class="bfam"><h3>${f}</h3><div class="ig">${l.map(b => `<button class="it${b.out ? ' off' : ''}" data-k="${b.k}" aria-pressed="${!b.out}" aria-label="${esc(b.style)}${b.out ? ', run out' : ''}">${ingIco(b.k, 40, { ghost: b.out })}<span>${esc(b.style)}</span>${b.out ? '<small>run out</small>' : ''}</button>`).join('')}</div></section>`).join('')}</div>
+   <h3 class="lbl" style="margin-top:10px">Barware</h3>
+   <div class="tools">${Object.entries(BARWARE).map(([k, v]) => `<button class="tool" data-k="${k}" aria-pressed="${BAR.barware.has(k)}">${v}</button>`).join('')}</div>`;
+  box.querySelectorAll('.it').forEach(b => b.onclick = () => { setRunOut(b.dataset.k, !BAR.out.has(b.dataset.k)); drawShelf(); fillBar(); const n = box.querySelector(`.it[data-k="${b.dataset.k}"]`); if (n) n.focus({ preventScroll: true }); });
+  box.querySelectorAll('.tool').forEach(b => b.onclick = () => { const k = b.dataset.k; BAR.barware.has(k) ? BAR.barware.delete(k) : BAR.barware.add(k); b.setAttribute('aria-pressed', BAR.barware.has(k)); });
 }
 $('#shelf').addEventListener('click', e => { e.stopPropagation(); if (screen === 'home') openShelf(); });
 
 /* 4. The menu: zoom in, by spirit, by feel, A–Z. R9: every drink, the ones you can't make marked "needs X" */
-const mini = r => glassSide(r, 34);
-function drinkBtn(r) {
-  const need = missingFor(r);
-  return `<button class="drink${need.length ? ' need' : ''}" data-id="${r.id}">${mini(r)}<span>${r.name}<small>${need.length ? 'needs ' + need.map(x => ING[x.k][0]).join(', ') : FEELS[feelOf(r)]}</small></span></button>`;
+const needText = r => { const m = missingFor(r); return m.length ? 'needs ' + m.map(x => ING[x.k][0]).join(', ') : ''; };
+/* Halo's drink card. R9: every drink stays in its place; one you can't make is ghosted and says what it needs. */
+function drinkCard(r, by) {
+  const need = needText(r);
+  const meta = by === 'feel' ? `${spIco(r.spirit, 14)}<span>${FAMILIES[r.spirit]}</span>` : `${feelIcon(r, 14)}<span>${FEELS[feelOf(r)]}</span>`;
+  return `<button class="drink dc${need ? ' need' : ''}" data-id="${r.id}" aria-label="${esc(r.name)}${need ? ', ' + need : ''}"><span class="pic">${glassSide(r, phoneMenu() ? 84 : 96, { ghost: !!need })}</span><span class="nm">${esc(r.name)}</span>
+    <span class="meta">${meta}</span>${need ? `<span class="needs">${esc(need)}</span>` : `<span class="meta">${timePie(r, 13)}<span>${fmt(stepsTotal(r))}</span></span>`}</button>`;
 }
+const phoneMenu = () => innerWidth <= 640;
+const byMake = l => [...l].sort((a, b) => canMake(b) - canMake(a));
 function menuBody(tab) {
-  if (tab === 'spirit') return Object.entries(FAMILIES).map(([k, v]) => { const l = R.filter(r => r.spirit === k); return l.length ? `<h3>${v}</h3>${l.map(drinkBtn).join('')}` : ''; }).join('');
-  if (tab === 'feel') return Object.entries(FEELS).map(([k, v]) => `<h3>${v}</h3>${R.filter(r => feelOf(r) === k).map(drinkBtn).join('')}`).join('');
-  return `<div class="letters">${[...R].sort((a, b) => a.name.localeCompare(b.name)).map(drinkBtn).join('')}</div>`;
+  const sec = (icon, name, l, by) => l.length ? `<section class="msec"><h3>${icon}<span>${name}</span><em>${l.filter(canMake).length} of ${l.length}</em></h3><div class="strip"><div class="track">${byMake(l).map(r => drinkCard(r, by)).join('')}</div></div></section>` : '';
+  if (tab === 'spirit') return Object.entries(FAMILIES).map(([k, v]) => sec(spIco(k, 30), v, R.filter(r => r.spirit === k), 'spirit')).join('');
+  if (tab === 'feel') return Object.entries(FEELS).map(([k, v]) => sec(feelIco(FEEL_ICON4[k], 26), v, R.filter(r => feelOf(r) === k), 'feel')).join('');
+  return `<div class="az" id="az" tabindex="0" aria-label="A to Z. Arrow keys move round the letters."></div>`;
+}
+function fillMenu(tab) {
+  const body = panel.querySelector('.mbody'); body.innerHTML = menuBody(tab); body.scrollTop = 0;
+  body.querySelectorAll('.strip').forEach(h => new Strip(h, { itemW: phoneMenu() ? 124 : 150, gap: phoneMenu() ? 12 : 20, pad: phoneMenu() ? 16 : 24 }));
+  if (tab === 'az') mountAZ($('#az'));
+  wireDrinks();
 }
 async function openMenu(tab = 'spirit') {
   hush(); setScreen('menu');
   await cam('menu', 850);
   panel.className = 'panel menucard'; panel.hidden = false; svg.classList.add('dim');
   const n = R.filter(canMake).length;
-  panel.innerHTML = `<h2>MENU</h2><p class="menunote">${R.length} drinks · ${n} you can make now</p><div class="tabs" role="tablist">${[['spirit', 'By spirit'], ['feel', 'By feel'], ['az', 'A–Z']].map(([k, v]) => `<button class="tab" role="tab" data-t="${k}" aria-selected="${k === tab}">${v}</button>`).join('')}</div><div class="list">${menuBody(tab)}</div>`;
-  panel.querySelectorAll('.tab').forEach(b => b.onclick = () => { panel.querySelectorAll('.tab').forEach(x => x.setAttribute('aria-selected', x === b)); panel.querySelector('.list').innerHTML = menuBody(b.dataset.t); wireDrinks(); });
-  wireDrinks();
+  panel.innerHTML = `<h2>MENU</h2><p class="menunote">${R.length} drinks · ${n} you can make now</p><div class="fbs" role="tablist">${[['spirit', 'By spirit'], ['feel', 'By feel'], ['az', 'A–Z']].map(([k, v]) => `<button class="fb" role="tab" data-t="${k}" aria-selected="${k === tab}">${v}</button>`).join('')}</div><div class="mbody"></div>`;
+  panel.querySelectorAll('.fbs .fb').forEach(b => b.onclick = () => { panel.querySelectorAll('.fbs .fb').forEach(x => x.setAttribute('aria-selected', x === b)); fillMenu(b.dataset.t); });
+  fillMenu(tab);
 }
-function wireDrinks() { panel.querySelectorAll('.drink').forEach(b => b.onclick = () => openRecipe(b.dataset.id)); }
+function wireDrinks() { panel.querySelectorAll('.dc').forEach(b => b.onclick = () => openRecipe(b.dataset.id)); }
+/* Halo's A–Z ring: the letters swell under the finger (or the mouse); lift on a letter and its drinks pop out as an
+   inner ring; lift on a drink to open it. Every drink is there (R9): the ones you can't make are ghosted, "needs X". */
+const ALPHA = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+function mountAZ(az) {
+  if (!az) return;
+  const small = phoneMenu();
+  const byL = {}; [...R].sort((a, b) => a.name.localeCompare(b.name)).forEach(r => { const k = r.name[0].toUpperCase(); (byL[k] = byL[k] || []).push(r); });
+  const W = az.clientWidth, H = az.clientHeight, cx = W / 2, cy = H / 2, RR = Math.min(W, H) * (small ? .43 : .44), R2 = RR * .55, LH = small ? 20 : 24, IW = small ? 43 : 52;
+  const els = [...ALPHA].map(c => { const e = document.createElement('div'); e.className = 'lt' + (byL[c] ? '' : ' none'); e.textContent = c; e.setAttribute('aria-hidden', 'true'); az.appendChild(e); return e; });
+  const pos = (n, N, r) => { const a = (n / N) * 2 * Math.PI - Math.PI / 2; return [cx + r * Math.cos(a), cy + r * Math.sin(a), a]; };
+  const fish = (d, sd) => Math.exp(-(d * d) / (2 * sd * sd));
+  let fL = null, fD = null, mode = null, letter = null, shown = null, live = false, inner = [], last = -1;
+  const drawLetters = () => els.forEach((e, n) => { let d = fL == null ? 99 : Math.abs(n - fL); if (fL != null) d = Math.min(d, 26 - d); const b = fish(d, 1.3);
+    const [x, y, a] = pos(n, 26, RR), p = 16 * b; e.style.transform = `translate(${x + p * Math.cos(a) - LH}px,${y + p * Math.sin(a) - LH}px) scale(${1 + (small ? 1.2 : 1.6) * b})`;
+    e.classList.toggle('hot', ALPHA[n] === letter || d < .5); });
+  const drawInner = () => { const N = inner.length; inner.forEach((e, n) => { let d = fD == null ? 99 : Math.abs(n - fD); if (fD != null) d = Math.min(d, N - d); const b = N > 1 ? fish(d, .7) : 0;
+    const [x, y] = N === 1 ? [cx, cy] : pos(n, N, R2); e.style.setProperty('--dx', (cx - x) + 'px'); e.style.setProperty('--dy', (cy - y) + 'px'); e.style.transform = `translate(${x - IW}px,${y - IW}px) scale(${1 + .3 * b})`; e.style.zIndex = 5 + Math.round(b * 5); }); };
+  const buildInner = (L, active) => {
+    shown = L; inner.forEach(e => e.remove()); inner = [];
+    (byL[L] || []).forEach((r, n) => { const e = document.createElement('button'); const need = needText(r);
+      e.className = 'drink ic' + (active ? ' live' : ''); e.dataset.id = r.id; e.setAttribute('aria-label', r.name + (need ? ', ' + need : ''));
+      e.innerHTML = `${glassSide(r, small ? 46 : 60, { ghost: !!need })}<span>${esc(r.name)}</span>${need ? `<small>${esc(need)}</small>` : ''}`;
+      e.style.animationDelay = (active ? n * 45 : 0) + 'ms';
+      e.onclick = ev => { if (ev.detail === 0) openRecipe(r.id); };   // keyboard; pointer lifts are handled below
+      az.appendChild(e); inner.push(e); });
+    live = active; fD = null; drawInner();
+  };
+  const polar = e => { const b = az.getBoundingClientRect(); const x = e.clientX - b.left - cx, y = e.clientY - b.top - cy; return { d: Math.hypot(x, y), a: ((Math.atan2(y, x) + Math.PI / 2) / (2 * Math.PI) + 1) % 1 }; };
+  const nearestL = v => { let best = null, bd = 99; [...ALPHA].forEach((c, n) => { if (!byL[c]) return; let d = Math.abs(n - v); d = Math.min(d, 26 - d); if (d < bd) { bd = d; best = n; } }); return best; };
+  const zone = p => p.d > (RR + R2) / 2 ? 'letters' : (inner.length > 1 && p.d > R2 * .45 ? 'drinks' : 'centre');
+  const pickLetter = n => { letter = ALPHA[n]; fL = n; last = -1; buildInner(letter, true); drawLetters(); };
+  const aim = p => { if (mode === 'letters') { fL = p.a * 26; drawLetters(); const k = Math.round(fL) % 26; if (k !== last) { last = k; if (byL[ALPHA[k]] && ALPHA[k] !== shown) buildInner(ALPHA[k], true); try { navigator.vibrate && navigator.vibrate(4); } catch (_) {} } }
+    else if (mode === 'drinks') { fD = p.a * inner.length; drawInner(); } };
+  drawLetters();
+  az.addEventListener('pointerdown', e => { const p = polar(e); mode = zone(p); if (mode === 'centre') { mode = null; return; } try { az.setPointerCapture(e.pointerId); } catch (_) {} aim(p); });
+  const rest = () => { fL = letter ? ALPHA.indexOf(letter) : null; drawLetters(); if (fD != null) { fD = null; drawInner(); } };
+  az.addEventListener('pointermove', e => { const p = polar(e); if (mode) return aim(p); if (e.pointerType !== 'mouse') return; const z = zone(p);
+    if (z === 'letters') { fL = p.a * 26; drawLetters(); const k = Math.round(fL) % 26; if (k !== last) { last = k; if (byL[ALPHA[k]] && ALPHA[k] !== shown) buildInner(ALPHA[k], true); } if (fD != null) { fD = null; drawInner(); } }
+    else if (z === 'drinks') { fD = p.a * inner.length; drawInner(); }
+    else rest(); });
+  az.addEventListener('pointerup', e => { const p = polar(e), m = mode; mode = null;
+    const t = document.elementFromPoint(e.clientX, e.clientY), hit = t && t.closest('.ic');
+    if (!m) { if (hit) return openRecipe(hit.dataset.id); if (live && inner.length > 1) { letter = null; fL = null; inner.forEach(x => x.remove()); inner = []; live = false; shown = null; drawLetters(); } return; }
+    if (m === 'letters') { const n = nearestL(fL); if (n == null) return; const ls = byL[ALPHA[n]]; if (ls.length === 1) return openRecipe(ls[0].id); return pickLetter(n); }
+    if (m === 'drinks') { const k = hit ? inner.indexOf(hit) : (fD == null ? -1 : Math.round(fD) % inner.length); if (k >= 0) openRecipe(inner[k].dataset.id); } });
+  az.addEventListener('pointerleave', () => { if (mode) return; last = -1; if (letter) { if (shown !== letter) buildInner(letter, true); } else { inner.forEach(x => x.remove()); inner = []; shown = null; live = false; } rest(); });
+  az.addEventListener('keydown', e => { if (e.target !== az) return; const has = [...ALPHA].map((c, n) => byL[c] ? n : -1).filter(n => n >= 0);
+    const i = has.indexOf(letter ? ALPHA.indexOf(letter) : -1);
+    if (['ArrowRight', 'ArrowDown'].includes(e.key)) { e.preventDefault(); pickLetter(has[(i + 1) % has.length]); }
+    else if (['ArrowLeft', 'ArrowUp'].includes(e.key)) { e.preventDefault(); pickLetter(has[(i - 1 + has.length) % has.length]); }
+    else if (e.key === 'Enter' && inner.length) { e.preventDefault(); inner[0].focus(); } });
+}
 $('#menu').addEventListener('click', e => { e.stopPropagation(); if (screen === 'home') openMenu(); });
 
 /* 5. Talking to Dionysus: tap Talk, tap a spirit, tap a drink (three taps) */
 let conv = null;
-const resChip = r => ({ label: `${glassSide(r, 22)} ${r.name}${canMake(r) ? '' : ' <small>needs ' + missingFor(r).map(x => ING[x.k][0]).join(', ') + '</small>'}`, cls: 'res', go: () => openRecipe(r.id) });
+/* A drink he names: Halo's result row, small. Status in E's words (R9): "Make now", "Make now · swap", "needs Campari". */
+const resChip = r => { const need = needText(r), swap = r.ing.some(x => !x.o && !STAPLE.has(x.k) && !BAR.have.has(x.k) && x.subs.some(k => BAR.have.has(k)));
+  return { label: `${glassSide(r, 30, { ghost: !!need })}<span class="rt"><b>${esc(r.name)}</b><small class="${need ? 'no' : 'ok'}">${need ? esc(need) : swap ? 'Make now · swap' : 'Make now'}</small></span>`, cls: 'res', go: () => openRecipe(r.id) }; };
 async function startTalk() {
   setScreen('talk'); hush(); cam('talk', 800);
   conv = Conversation(); render(conv.start());
@@ -316,7 +529,7 @@ function tellStory(exceptId) {
   const pool = R.filter(r => STORY[r.id] && (canMake(r) || !BAR.filled) && r.id !== exceptId);
   if (!pool.length) return speak("Stock the shelf and I'll tell you about the drinks on it.", { chips: [{ label: 'OK', cls: 'go', go: home }] });
   const r = pool[Math.floor(Math.random() * pool.length)], s = STORY[r.id];
-  speak(`<span class="who">${r.name} · ${s.by}, ${s.at}, ${s.when} · ${s.kind === 'legend' ? 'a legend' : 'on record'}</span><br>${s.tell}`, {
+  speak(`<span class="sname">${esc(r.name)}</span><span class="sq">${esc(s.tell)}</span><span class="sm"><b>${esc(s.by)}</b><span>${esc(s.at)}</span><span>${esc(s.when)}</span>${s.kind === 'legend' ? '<span class="lg">as legend has it</span>' : ''}</span>`, {
     cls: 'story', chips: [{ label: 'Make me one', cls: 'go', go: () => openRecipe(r.id) }, { label: 'Another story', go: () => tellStory(r.id) }] });
   dio.story();
 }
@@ -360,34 +573,64 @@ $('#honey').addEventListener('click', e => { e.stopPropagation(); if (screen ===
 
 /* 7. The recipe. R6: he acts out each step, then waits for your tap. R10: he stands sharp beside the card. */
 let recipeState = null;
+const haveK = k => STAPLE.has(k) || BAR.have.has(k);
+/* Halo's rule: a strain after a stir pours from the mixing glass */
+const glyphAct = (r, n) => { const a0 = r.steps[n][0]; return a0 === 'strain' && r.steps.slice(0, n).some(x => x[0] === 'stir') ? 'strain-glass' : a0; };
+const glyph = (r, n) => typeof act === 'function' ? act(glyphAct(r, n), r.colour, { glass: r.glass }) : '';
+/* Halo's ingredient grid: icon, quantity, unit, name, status (Style swap in gold, optional, needs) */
+function ingRow(x) {
+  const ok = haveK(x.k), sub = ok ? null : x.subs.find(k => BAR.have.has(k));
+  const q = typeof x.q === 'number' ? (Number.isInteger(x.q) ? x.q : x.q.toFixed(1)) : (x.q || '');
+  let unit = x.u || '', name = ING[x.k][0]; const m = unit.match(/^ml (\w+)$/);
+  if (m) { unit = 'ml'; name = m[1] === 'juice' ? name + ' juice' : m[1] === 'espresso' ? 'Espresso' : m[1] === 'hot' ? 'Hot ' + name.toLowerCase() : name; }
+  const right = ok ? '' : sub ? `<span class="sub">→ ${esc(ING[sub][0])}</span>` : x.o ? `<span class="opt">optional</span>` : `<span class="needx">needs</span>`;
+  return `<div class="ir${ok || sub ? '' : ' miss'}"><span class="ii">${ingIco(x.k, 22, { ghost: !ok && !sub })}</span><span class="iq">${q}</span><span class="iu">${esc(unit)}</span><span class="in">${esc(name)}</span><span class="ix">${right}</span></div>`;
+}
 function openRecipe(id, chosen) {
   const r = RB[id]; hush(); setScreen('recipe');
   document.body.classList.add('recipe-on'); cam('recipe', 900);
   golden = Math.random() < .15;
-  const s = STORY[id], miss = missingFor(r), swaps = swapsFor(r);
+  const swaps = swapsFor(r);
   const worth = chosen && chosen.worth;
+  let pic = glassSide(r, 88); if (golden) pic = pic.replace('fill="var(--glass)"/>', 'fill="var(--glass)" stroke="#e8c45a" stroke-width="3"/>');
   panel.className = 'panel recipe'; panel.hidden = false;
-  panel.innerHTML = `${chosen ? `<p class="kicker">🎲 Barman’s choice${worth ? ` · <b>worth buying a bottle for</b>` : ''}</p>` : ''}<h2>${r.name}</h2>
-   <p class="meta">${FEELS[feelOf(r)]} · ${STRENGTHS[strengthOf(r)]} strength · ${r.glass} glass${s ? ` · ${s.by}, ${s.when}` : ''}</p>
+  panel.innerHTML = `<div class="rtop">${chosen ? `<div class="kicker">${diceHTML(14)}<span>Barman’s choice${worth ? ` · <b>worth buying a bottle for</b>` : ''}</span></div>` : ''}
+   <button class="again" id="againDice" aria-label="Another barman’s choice">${diceHTML(22)}</button>
+   <div class="head"><div class="rg">${pic}</div><div><h2>${esc(r.name)}</h2>
+     <div class="rm"><span>${spIco(r.spirit, 18)}${FAMILIES[r.spirit]}</span><span>${feelIcon(r, 15)}${FEELS[feelOf(r)]}</span><span>${timePie(r, 15)}${fmt(stepsTotal(r))}</span><span>${STRENGTHS[strengthOf(r)]} strength</span></div></div></div>
    ${worth ? `<p class="worth">Needs ${ING[worth.bottle][0]}. One bottle, and ${worth.opens > 1 ? `${worth.opens} drinks open up` : 'this one is yours'}.</p>` : ''}
    ${golden ? '<p class="golden">A golden rim. The god’s own touch: it happens one time in seven.</p>' : ''}
-   <ul class="ing">${r.ing.map(x => { const m = miss.includes(x); return `<li class="${m ? 'miss' : ''}"><span>${ING[x.k][0]}${x.o ? ' (optional)' : ''}${m ? ' · you’re out' : ''}</span><span>${fmtQty(x)}</span></li>`; }).join('')}</ul>
-   ${swaps.length ? `<div class="swap"><b>No ${swaps.map(s => s.tool.toLowerCase()).join(', ')}?</b> ${swaps.map(s => `Use ${s.use}`).join('. ')}.</div>` : ''}
-   <div class="stepbox" id="stepbox" aria-live="polite"><p class="stepno" id="stepno"></p><p class="step" id="stepText"></p><p class="act" id="stepAct"></p></div>
+   <div class="ing">${r.ing.map(ingRow).join('')}</div>
+   ${swaps.length ? `<div class="toolswap"><b>No ${swaps.map(s => s.tool.toLowerCase()).join(', ')}?</b> ${swaps.map(s => `Use ${s.use}`).join('. ')}.</div>` : ''}</div>
+   <div class="stepbox" id="stepbox" aria-live="polite"><div class="stxt"><p class="stepno" id="stepno"></p><p class="step" id="stepText"></p><p class="sact" id="stepAct"></p></div><div class="glyph" id="glyph"></div></div>
+   <div class="thumbs" id="thumbs">${r.steps.map((st, n) => `<button class="th" data-i="${n}" aria-label="Step ${n + 1}: ${esc(st[2])}">${glyph(r, n)}</button>`).join('')}</div>
    <div class="row steprow"><button class="btn ghost" id="prevS">Back a step</button><button class="btn" id="nextS">Done, next</button></div>`;
   $('#prevS').onclick = () => goStep(recipeState.i - 1);
   $('#nextS').onclick = () => recipeState.i < r.steps.length - 1 ? goStep(recipeState.i + 1) : finishRecipe();
   $('#stepbox').onclick = () => $('#nextS').click();
+  panel.querySelectorAll('.thumbs .th').forEach(b => b.onclick = () => goStep(+b.dataset.i));
+  $('#againDice').onclick = () => another($('#againDice .dice'));
   recipeState = { r, i: 0, chosen };
   drinkGlass(r, 0, false); goStep(0);
+}
+/* "Another": Halo's dice roll, then a new barman's choice (R7 pool) */
+function another(diceBox) {
+  const r = recipeState && recipeState.r; if (!r) return;
+  rollDice(diceBox, () => { const p = barmansChoice(r.id); p ? openRecipe(p.r.id, p) : home(); });
 }
 function goStep(i) {
   const s = recipeState; if (!s || i < 0) return;
   const r = s.r, n = r.steps.length, st = r.steps[i], action = actionFor(st, r);
+  if (i >= n) return;
   s.i = i;
-  $('#stepno').textContent = `Step ${i + 1} of ${n}`;
+  $('#stepno').innerHTML = `Step <i>${i + 1}</i> of ${n}`;
   $('#stepText').textContent = st[2];
-  $('#stepAct').textContent = ACTION_LABEL[action];
+  const label = ACTION_LABEL[action];
+  $('#stepAct').textContent = label && label.toLowerCase() !== st[2].toLowerCase() ? label : '';
+  const a = glyphAct(r, i), timed = a === 'shake' || a === 'stir';
+  $('#glyph').innerHTML = glyph(r, i) + (timed && st[1] ? `<span class="sec">${pie(st[1] / 30, 16)}<span>${st[1]} s</span></span>` : '');
+  panel.querySelectorAll('.thumbs .th').forEach((b, k) => { b.classList.toggle('cur', k === i); b.classList.toggle('done', k < i); b.setAttribute('aria-current', k === i ? 'step' : 'false'); });
+  const cur = panel.querySelector('.thumbs .th.cur'); if (cur) { const T = $('#thumbs'); T.scrollLeft = Math.max(0, cur.offsetLeft - T.clientWidth / 2 + cur.offsetWidth / 2); }
   $('#prevS').disabled = i === 0;
   $('#nextS').textContent = i === n - 1 ? 'Done, it’s ready' : 'Done, next';
   $('#stepbox').classList.remove('waiting');
@@ -398,6 +641,7 @@ function goStep(i) {
   lightUp(action === 'honey' ? 'honey' : null);
   const pour = ['pour', 'top', 'strain', 'float'].includes(st[0]) || i > 0;
   drinkGlass(r, pour ? i / n : 0, false);
+  /* R6: he acts the step out, then waits for your tap. No timer moves you on. */
   dio.perform(action, { r, fruit: ING[fk][2], honeyAt: HONEY_AT, bottle }).then(done => {
     if (!done || !recipeState || recipeState.i !== i) return;
     drinkGlass(r, pour ? (i + 1) / n : 0, i === n - 1);
@@ -406,12 +650,13 @@ function goStep(i) {
   });
 }
 function finishRecipe() {
-  const r = recipeState.r; drinkGlass(r, 1, true); dio.idle();
-  $('#stepbox').innerHTML = `<p class="step">There it is. ${golden ? 'Golden rim and all. ' : ''}Enjoy your ${r.name}.</p>`;
+  const r = recipeState.r; drinkGlass(r, 1, true); dio.idle(); lightUp(null);
+  $('#stepbox').innerHTML = `<p class="step done">There it is. ${golden ? 'Golden rim and all. ' : ''}Enjoy your ${esc(r.name)}.</p>`;
   $('#stepbox').onclick = null;
+  panel.querySelectorAll('.thumbs .th').forEach(b => { b.classList.remove('cur'); b.classList.add('done'); });
   const row = panel.querySelector('.steprow');
   row.innerHTML = `<button class="btn ghost" id="again">Another, please</button><button class="btn" id="rdone">Back to the bar</button>`;
-  $('#again').onclick = () => { const p = barmansChoice(r.id); p ? openRecipe(p.r.id, p) : home(); };
+  $('#again').onclick = () => another($('#againDice .dice'));
   $('#rdone').onclick = home;
 }
 
@@ -421,11 +666,13 @@ const settings = $('#settings');
 /* Text size: one scale for the recipe step and the reading panels; remembered on this device */
 const TEXT_STEPS = [0.8, 0.9, 1, 1.15, 1.3, 1.5];
 let textI = 2; try { const v = +localStorage.getItem('dio-text'); if (v >= 0 && v < TEXT_STEPS.length && localStorage.getItem('dio-text') !== null) textI = v; } catch (e) {}
-function applyText() { const s = TEXT_STEPS[textI]; document.documentElement.style.setProperty('--text-scale', s); document.documentElement.style.setProperty('--step-size', Math.round(36 * s) + 'px'); try { localStorage.setItem('dio-text', textI); } catch (e) {} }
+function applyText() { const s = TEXT_STEPS[textI], d = document.documentElement; d.style.setProperty('--text-scale', s); d.style.setProperty('--step-size', Math.round(36 * s) + 'px');
+  if (textI >= TEXT_STEPS.length - 2) d.dataset.big = ''; else delete d.dataset.big;   // phone: at the largest sizes the step glyph moves above the words
+  try { localStorage.setItem('dio-text', textI); } catch (e) {} }
 applyText();
 function renderSettings() {
   settings.innerHTML = `<h3>Settings</h3>
-   <fieldset><legend>Text size</legend><div class="sizer"><button type="button" class="btn small" id="txtDown" aria-label="Smaller text" ${textI === 0 ? 'disabled' : ''}>A−</button><span class="sizeprev"><b style="font-size:${Math.round(36 * TEXT_STEPS[textI])}px">Aa</b><small>${Math.round(36 * TEXT_STEPS[textI])} px recipe steps</small></span><button type="button" class="btn small" id="txtUp" aria-label="Larger text" ${textI === TEXT_STEPS.length - 1 ? 'disabled' : ''}>A+</button></div></fieldset>
+   <fieldset><legend>Text size</legend><div class="sizer"><button type="button" class="btn" id="txtDown" aria-label="Smaller text" ${textI === 0 ? 'disabled' : ''}>A−</button><span class="sizeprev"><b style="font-size:${Math.round(36 * TEXT_STEPS[textI])}px">Aa</b><small>${Math.round(36 * TEXT_STEPS[textI])} px recipe steps</small></span><button type="button" class="btn" id="txtUp" aria-label="Larger text" ${textI === TEXT_STEPS.length - 1 ? 'disabled' : ''}>A+</button></div></fieldset>
    <h3>His look</h3>
    <fieldset><legend>Finish</legend><div class="seg">${Object.entries(FINISHES).map(([k, v]) => `<label><input type="radio" name="fin" value="${k}" ${LOOK.finish === k ? 'checked' : ''}>${v}</label>`).join('')}</div></fieldset>
    <fieldset><legend>Coverage</legend><div class="seg">${Object.entries(COVERAGES).map(([k, v]) => `<label><input type="radio" name="cov" value="${k}" ${LOOK.coverage === k ? 'checked' : ''} ${k === 'cheeky' && !LOOK.adult ? 'disabled' : ''}>${k === 'cheeky' ? 'Cheeky<span class="badge">ADULT</span>' : v}</label>`).join('')}</div></fieldset>
@@ -442,7 +689,6 @@ const openSettings = e => { if (e) e.stopPropagation(); settings.hidden = !setti
 $('#gear').onclick = openSettings;
 $('#lamp').addEventListener('click', openSettings);
 settings.addEventListener('click', e => e.stopPropagation());
-$('#lamp').addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openSettings(e); } });
 document.addEventListener('click', e => { if (!settings.hidden && !settings.contains(e.target) && !$('#lamp').contains(e.target)) settings.hidden = true; });
 applyLook();
 
