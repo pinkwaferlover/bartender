@@ -917,6 +917,7 @@ def place_palm(side, want, face=None, along=None, iters=3, wrist_amount=1.0):
         IKT[side].location = IKT[side].location + err
     upd()
     place_palm.off[side] = want - IKT[side].location
+    if DEBUG: print(f'[palm {side}] miss {(want - hand_frame(side).translation).length:.3f} at', tuple(round(v) for v in world_units(want)), flush=True)
 
 
 def grip(side, amount, thumb=None):
@@ -1029,8 +1030,8 @@ def pmat(name, *a, **k):
 
 M_GLASS = glass_material()
 M_CLOTH = fawn_material()
-M_STEEL = mat('shaker', '#c9a24a', 0.22, 1.0)
-M_STEEL2 = mat('shaker_cap', '#b08a3a', 0.3, 1.0)
+M_STEEL = mat('shaker', '#e2d2ae', 0.3, 0.55)
+M_STEEL2 = mat('shaker_cap', '#c9a24a', 0.3, 0.7)
 M_BOTTLE = mat('dio_bottle', '#7a3612', 0.18, coat=0.6)
 M_BOTTLE2 = mat('dio_bottle2', '#2f4a2a', 0.18, coat=0.6)
 M_LABEL = mat('dio_label', '#f1e6cf', 0.7)
@@ -1260,18 +1261,28 @@ def free_left(t, sway=0.0):
     grip('L', 0.35, 0.3)
 
 
-def held_axis_place(side, fist_at, tip, root, offset=0.0, iters=3):
-    """IK the hand so the middle of its fist is at fist_at, the fist turned along the object from `tip`."""
+def held_axis_place(side, fist_at, tip=None, root=None, offset=0.0, axis=None, iters=5):
+    """IK the hand so the middle of its fist is at fist_at, the fist turned along the held object: a staff
+    from `tip` (its lower end, kept where it is, e.g. in the glass) through the fist, or an object along
+    `axis` (a bottle, a cup) placed through the fist with its origin `offset` below it."""
     off = getattr(held_axis_place, 'off', {}).get(side, Vector((0, 0, 0)))
     IKT[side].location = fist_at - off
     for _ in range(iters):
         upd()
         for _ in range(2):
-            upd(); turn_wrist(side, fist_axis(side).rotation_difference((fist_point(side) - tip).normalized()))
-        upd(); IKT[side].location = IKT[side].location + (fist_at - fist_point(side))
-    ang = hold_axis(side, tip, root, offset)
+            d_ = Vector(axis).normalized() if axis is not None else (fist_point(side) - tip).normalized()
+            turn_wrist(side, fist_axis(side).rotation_difference(d_)); upd()
+        IKT[side].location = IKT[side].location + (fist_at - fist_point(side))
+    upd()
+    g = fist_point(side)
+    d_ = Vector(axis).normalized() if axis is not None else (g - tip).normalized()
+    turn_wrist(side, fist_axis(side).rotation_difference(d_)); upd(); g = fist_point(side)
+    if root is not None:
+        org = (g - d_ * offset) if axis is not None else tip
+        root.matrix_world = axis_matrix(org, d_) @ Matrix.Diagonal((*root.scale, 1)); upd()
     held_axis_place.off = getattr(held_axis_place, 'off', {}); held_axis_place.off[side] = fist_at - IKT[side].location
-    return ang
+    if DEBUG: print(f'[hold {side}] miss {(fist_at - g).length:.3f} axis {math.degrees(fist_axis(side).angle(d_)):.0f} deg at', tuple(round(v) for v in world_units(fist_at)), flush=True)
+    return g
 
 
 # ---------------------------------------------------------------- loops
@@ -1291,7 +1302,7 @@ def L_polish(t, pr):
     set_pole('L', (2.6, 1.2, -3.6)); set_pole('R', (2.6, 1.0, -3.2))
     up_ = Vector((0.05 * math.sin(a), -0.32, 1)).normalized()       # the cup tipped a little toward you
     grip('L', 0.85, 0.7)
-    held_axis_place('L', fist, fist - up_ * 0.09 * CUP_S, pr['glass'])
+    held_axis_place('L', fist, root=pr['glass'], axis=up_, offset=0.09 * CUP_S)
     gl = pr['glass']; n = (gl.matrix_world.to_3x3() @ Vector((0, 0, 1))).normalized(); base = gl.matrix_world.translation
     fr = (Vector((0, -1, 0)) - n * n.dot(Vector((0, -1, 0)))).normalized(); sd = n.cross(fr).normalized()
     if sd.x > 0: sd = -sd                                            # toward his right
@@ -1342,7 +1353,7 @@ def L_pour(t, pr):
     axis = Vector((math.sin(ang), -0.25 * math.sin(ang), math.cos(ang))).normalized()    # the bottle's up, tipping to his left
     clavicle_follow('R', fist); set_pole('R', (2.6, 1.8, -3.2))
     grip('R', 0.85, 0.7)
-    held_axis_place('R', fist, fist - axis * 0.95, pr['bottle'])
+    held_axis_place('R', fist, root=pr['bottle'], axis=axis, offset=0.98)
     upd()
     for o in [o for o in bpy.data.objects if o.name.startswith('p_stream')]: bpy.data.objects.remove(o, do_unlink=True)
     if tip > 0.92:
@@ -1354,34 +1365,35 @@ def L_pour(t, pr):
 
 
 def L_shake(t, pr):
-    """Recipe step (shake): the shaker in both hands at his right shoulder, cap in the left palm, tin in the
-    right; two hard shakes a loop with the body following; a grin throughout."""
-    a = 2 * math.pi * t * 2
-    sk = track(t * 2 % 1.0, [(0.0, -1.0), (0.12, -1.1), (0.45, 1.0), (0.55, 1.08), (0.88, -1.0)])
-    lag = track((t * 2 - 0.06) % 1.0, [(0.0, -1.0), (0.12, -1.1), (0.45, 1.0), (0.55, 1.08), (0.88, -1.0)])
-    body_pose(bend=3 + 1.5 * lag, twist=-9 - 2.5 * lag, lean=-3 - 1.5 * lag, pitch=4 - 3 * lag, yaw=-6 - 3 * lag,
-              roll=5 + 2 * lag, breath=0.6)
-    face(smile=0.85, open_=0.3 + 0.12 * lag, brow=(0.6, 0.55), look=(6, 10), squint=0.5)
-    axis = Vector((-0.42, -0.22, 1.0)).normalized()
-    c = S2W(CX - 74 + 6 * sk, 486 - 22 * sk, D_HAND - 0.05) + axis * (0.05 * sk)
+    """Recipe step (shake): the shaker on a diagonal in front of his chest, the tin in his right hand, the cap
+    under his left palm toward his left shoulder; two hard shakes a loop along its length, the body
+    following a beat behind; a grin throughout."""
+    sk = track(t * 2 % 1.0, [(0.0, -1.0), (0.1, -1.12), (0.42, 1.0), (0.52, 1.1), (0.86, -0.95)])
+    lag = track((t * 2 - 0.07) % 1.0, [(0.0, -1.0), (0.1, -1.12), (0.42, 1.0), (0.52, 1.1), (0.86, -0.95)])
+    body_pose(bend=4 + 1.2 * lag, twist=2 + 2.5 * lag, lean=1.5 * lag, pitch=8 - 3 * lag, yaw=-8 + 2 * lag,
+              roll=6 + 2 * lag, breath=0.6)
+    face(smile=0.85, open_=0.3 + 0.12 * lag, brow=(0.6, 0.55), look=(-6, 12), squint=0.5)
+    axis = Vector((0.62, -0.3, 1.0)).normalized()
+    c = S2W(CX + 2 + 13 * sk, 548 - 15 * sk, D_HAND - 0.1)
     sh = pr['shaker']; base = c - axis * 0.45
     sh.matrix_world = axis_matrix(base, axis); upd()
+    set_pole('R', (2.8, 1.4, -3.2)); set_pole('L', (2.8, 1.6, -3.0))
     ex = axis.cross(Vector((0, -1, 0))).normalized()
-    set_pole('R', (2.4, 1.0, -3.2)); set_pole('L', (2.0, 1.0, -2.6))
-    rp = base + axis * 0.3 + ex * -0.06 + Vector((0, -0.2, 0))
-    lp = base + axis * 0.92 + ex * 0.02 + Vector((0, -0.05, 0))
+    if ex.x > 0: ex = -ex                                   # across the shaker, toward his right and down
+    rp = base + axis * 0.28 + ex * 0.24
+    lp = base + axis * 0.99
     clavicle_follow('R', rp); clavicle_follow('L', lp)
-    place_palm('R', rp, face=Vector((0.25, 0.9, 0.0)), along=ex * -0.2 + Vector((0.3, 0.6, 0.15)), wrist_amount=0.85)
-    place_palm('L', lp, face=-axis, along=Vector((-0.8, 0.2, 0.0)), wrist_amount=0.85)
-    grip('R', 0.75, 0.6); grip('L', 0.45, 0.4)
+    place_palm('R', rp, face=-ex, along=axis * 0.5 + Vector((0, -0.6, 0.2)), wrist_amount=0.85)
+    place_palm('L', lp, face=-axis, along=Vector((-0.6, -0.5, 0.1)), wrist_amount=0.85)
+    grip('R', 0.75, 0.6); grip('L', 0.4, 0.35)
 
 
 def L_reach(t, pr):
     """Recipe step (lemon, mint, ice, garnish): he looks up, reaches up and back to the shelf, takes a small
     bottle by the neck, brings it down in front of him and holds it out over the counter, delighted."""
-    k = [(0.0, (CX - 70, 600, -0.9)), (0.07, (CX - 74, 612, -0.95)), (0.3, (CX - 150, 360, 0.25)), (0.4, (CX - 158, 332, 0.45), 'h'),
-         (0.47, (CX - 156, 336, 0.45), 'h'), (0.66, (CX - 70, 548, -1.25)), (0.73, (CX - 58, 562, -1.32)), (0.79, (CX - 60, 556, -1.3), 'h'),
-         (0.9, (CX - 61, 552, -1.3)), (1.0, (CX - 60, 556, -1.3), 'h')]
+    k = [(0.0, (CX - 70, 600, -0.9)), (0.07, (CX - 74, 612, -0.95)), (0.28, (CX - 162, 365, 0.25)), (0.38, (CX - 170, 338, 0.45), 'h'),
+         (0.45, (CX - 168, 342, 0.45), 'h'), (0.56, (CX - 178, 440, -0.4)), (0.67, (CX - 92, 530, -1.25)), (0.73, (CX - 62, 546, -1.32)),
+         (0.79, (CX - 66, 538, -1.3), 'h'), (0.9, (CX - 67, 534, -1.3)), (1.0, (CX - 66, 538, -1.3), 'h')]
     hx, hy, hd = track(t, k, cyc=False)
     upv = bump(t, 0.05, 0.6) ** 0.7
     g = smoothstep(0.66, 0.8, t)
@@ -1397,12 +1409,12 @@ def L_reach(t, pr):
     up_dir = Vector((0.15 * (1 - g), 0.1, 1)).normalized()
     if closed < 0.5:      # not holding it yet: the open hand, fingers up, palm toward the shelf
         b_.hide_render = True
-        place_palm('R', fist, face=Vector((0.2, 1.0, 0.3)), along=Vector((-0.1, 0.1, 1)), wrist_amount=0.7)
-        grip('R', 0.15 + 0.6 * closed, 0.2 + 0.4 * closed)
+        place_palm('R', fist, face=Vector((0.8, 0.55, -0.1)), along=Vector((-0.15, 0.25, 1)), wrist_amount=0.9)
+        grip('R', 0.35 + 0.5 * closed, 0.3 + 0.4 * closed)
     else:
         b_.hide_render = False
         grip('R', 0.85, 0.7)
-        held_axis_place('R', fist, fist - up_dir * 0.62, b_)
+        held_axis_place('R', fist, root=b_, axis=up_dir, offset=0.62)
 
 
 def L_story(t, pr):
@@ -1414,16 +1426,16 @@ def L_story(t, pr):
     talk = 0.5 + 0.5 * math.sin(a * 4 + 0.3) * math.sin(a * 2 + 1.1)
     face(smile=0.55 + 0.2 * math.sin(a), open_=0.15 + 0.35 * talk, brow=(0.55 + 0.35 * math.sin(a * 2), 0.5 + 0.3 * math.sin(a * 2 + 0.3)),
          look=(3 * math.sin(a), 14), squint=0.2)
-    rx = track(t, [(0.0, (CX - 96, 552)), (0.25, (CX - 128, 532)), (0.5, (CX - 110, 548)), (0.75, (CX - 136, 540))])
+    rx = track(t, [(0.0, (CX - 92, 560)), (0.22, (CX - 146, 522)), (0.45, (CX - 118, 548)), (0.7, (CX - 156, 532)), (0.86, (CX - 110, 556))])
     rp = S2W(rx[0], rx[1], D_HAND + 0.1)
     turn = 0.5 + 0.5 * math.sin(a * 2)
     set_pole('R', (2.8, 1.4, -3.4)); clavicle_follow('R', rp)
     place_palm('R', rp, face=Vector((-0.45 * turn, -0.35, 0.85)).normalized(), along=Vector((-0.75, -0.6, 0.15)), wrist_amount=0.8)
     grip('R', 0.12 + 0.12 * (1 - turn), 0.1)
-    lp = S2W(CX + 108 + 10 * math.sin(a + 2), 586 + 8 * math.sin(a * 2 + 1), D_HAND + 0.25)
+    lp = S2W(CX + 112 + 16 * math.sin(a + 2), 580 + 12 * math.sin(a * 2 + 1), D_HAND + 0.2)
     set_pole('L', (2.6, 1.4, -3.4)); clavicle_follow('L', lp)
     place_palm('L', lp, face=Vector((0.4, -0.3, 0.85)).normalized(), along=Vector((0.6, -0.75, 0.1)), wrist_amount=0.7)
-    grip('L', 0.25, 0.2)
+    grip('L', 0.12, 0.15)
 
 
 def L_dip(t, pr):
@@ -1431,17 +1443,17 @@ def L_dip(t, pr):
     the counter, dipped, lifted dripping and carried over the glass, where he holds it as the honey runs
     (from `hold`), pleased with himself. The jar is the app's own layer; only his staff tip goes into it."""
     jx, jy = JAR_MOUTH
-    k = [(0.0, (CX - 92, 560, CX - 96, 640)), (0.07, (CX - 96, 556, CX - 102, 636)),
-         (0.27, (jx + 14, 470, jx + 2, jy - 6)), (0.34, (jx + 10, 482, jx, jy + 14), 'h'),
-         (0.4, (jx + 12, 478, jx + 1, jy + 8)), (0.46, (jx + 10, 484, jx, jy + 16), 'h'),
-         (0.62, (jx + 40, 448, jx + 36, jy - 34)), (0.76, (CX - 58, 468, DRINK[0] - 8, DRINK[1] - 66)),
-         (0.82, (CX - 60, 472, DRINK[0] - 10, DRINK[1] - 62), 'h'), (0.91, (CX - 59, 470, DRINK[0] - 9, DRINK[1] - 64)),
-         (1.0, (CX - 60, 472, DRINK[0] - 10, DRINK[1] - 62), 'h')]
+    k = [(0.0, (CX - 100, 560, CX - 104, 640)), (0.07, (CX - 104, 566, CX - 108, 646)),
+         (0.27, (jx - 16, 516, jx + 2, jy - 6)), (0.34, (jx - 18, 530, jx, jy + 14), 'h'),
+         (0.4, (jx - 17, 524, jx + 1, jy + 8)), (0.46, (jx - 18, 532, jx, jy + 16), 'h'),
+         (0.62, (jx + 14, 486, jx + 34, jy - 36)), (0.76, (CX - 84, 522, DRINK[0] - 8, DRINK[1] - 66)),
+         (0.82, (CX - 86, 526, DRINK[0] - 10, DRINK[1] - 62), 'h'), (0.91, (CX - 85, 524, DRINK[0] - 9, DRINK[1] - 64)),
+         (1.0, (CX - 86, 526, DRINK[0] - 10, DRINK[1] - 62), 'h')]
     fx, fy, tx, ty = track(t, k, cyc=False)
     reach = bump(t, 0.05, 0.75) ** 0.6
     g = smoothstep(0.74, 0.84, t)
-    body_pose(bend=5 + 7 * reach, twist=-4 - 10 * reach + 3 * g, lean=-4 * reach, pitch=14 + 10 * reach - 16 * g,
-              yaw=-6 - 14 * reach + 8 * g, roll=-2 * reach + 7 * g, breath=0.5 + 0.5 * math.sin(2 * math.pi * t))
+    body_pose(bend=5 + 6 * reach, twist=-3 - 5 * reach + 3 * g, lean=-1.5 * reach, pitch=14 + 10 * reach - 16 * g,
+              yaw=-5 - 9 * reach + 8 * g, roll=-2 * reach + 7 * g, breath=0.5 + 0.5 * math.sin(2 * math.pi * t))
     face(smile=0.4 + 0.15 * reach + 0.45 * g, open_=0.1 * reach + 0.3 * g, brow=(0.2 * reach + 0.6 * g, 0.2 * reach + 0.5 * g),
          look=(-10 * reach * (1 - g) + 5 * g, -8 * reach * (1 - g) + 14 * g), squint=0.2 + 0.35 * g)
     free_left(t)
@@ -1593,6 +1605,11 @@ if __name__ == 'build_dionysus' or True:
         specs = [(STILL, STILL_FRAME, STILL_CROP, STILL_SCALE)] if STILL else [tuple(s_.split(':')) for s_ in STILLS.split(',')]
         for nm, fr, crop, sc in specs:
             render_still(nm, None if fr in (None, '') else int(fr), crop or 'full', float(sc or 1))
+    elif '--dry' in ARGS:
+        for nm in _arg('--dry').split(','):
+            clear_props(); pr = props_for(LOOPS[nm][4])
+            for f in range(LOOPS[nm][1]):
+                print(f'--- {nm} {f}', flush=True); pose_frame(nm, f / LOOPS[nm][1], pr)
     elif SHEET:
         for nm in SHEET.split(','): render_sheet(nm, STILL_SCALE)
     else:
