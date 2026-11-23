@@ -1013,8 +1013,24 @@ def body_pose(bend=0.0, twist=0.0, lean=0.0, pitch=0.0, yaw=0.0, roll=0.0, breat
 def face(smile=0.0, open_=0.0, brow=(0.0, 0.0), wink=(0.0, 0.0), look=(0.0, 0.0), squint=0.0):
     """Expression from the default rig's face bones (MPFB ships no expression data). smile 0..1 (a warm
     closed-to-open smile), open_ 0..1 (jaw), brow (left, right) raise 0..1, wink (left, right) 0..1,
-    look (yaw to his left, pitch up) degrees for the eyes, squint 0..1 (lower lids up, as in a real smile)."""
-    pass
+    look (yaw to his left, pitch up) degrees for the eyes, squint 0..1 (lower lids up, as in a real smile).
+    Weighted face bones (all unconnected): levator05 = mouth corner, oris03/oris07 = upper/lower lip sides,
+    oris05/oris01 = upper/lower lip middle, risorius03 = cheek, levator06 = nostril, oculi01 = brow,
+    orbicularis03/04 = upper/lower lid, eye = the eyeball. Offsets are rig metres (his face is ~0.14 wide)."""
+    sm = smile
+    for side, sx, bi in (('L', 1, 0), ('R', -1, 1)):
+        nudge('levator05.' + side, (sx * 0.006 * sm, 0.005 * sm, 0.010 * sm - 0.002 * open_))     # the corners up, out and back
+        nudge('oris03.' + side, (sx * 0.0035 * sm, 0.0025 * sm, 0.004 * sm))
+        nudge('oris07.' + side, (sx * 0.004 * sm, 0.003 * sm, 0.003 * sm - 0.002 * open_))
+        nudge('risorius03.' + side, (sx * 0.003 * sm, -0.003 * sm, 0.0065 * sm))  # the cheeks lift
+        nudge('levator06.' + side, (sx * 0.0008 * sm, 0, 0.0015 * sm))
+        nudge('oculi01.' + side, (0, -0.0012 * brow[bi], 0.0075 * brow[bi]))        # brows up
+        rot('orbicularis03.' + side, (1, 0, 0), 30 * wink[bi] + 3 * squint - 5 * brow[bi] - 4)   # upper lid down (+)
+        rot('orbicularis04.' + side, (1, 0, 0), -(14 * squint + 16 * wink[bi]))       # lower lid up (-)
+        rot('eye.' + side, (0, 0, 1), look[0]); rot('eye.' + side, (1, 0, 0), -look[1])
+    nudge('oris05', (0, 0.0015 * sm, 0.0012 * sm))
+    nudge('oris01', (0, 0.002 * sm, -0.0012 * open_))
+    rot('jaw', (1, 0, 0), 6.5 * open_)
 
 
 def rest_pose():
