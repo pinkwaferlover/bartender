@@ -373,10 +373,6 @@ group('counterfront_details', cparts, FRONT_Y - 0.001)
 # ---------------------------------------------------------------- touchables: true colour (Q7)
 M_GREEN = mat('menu_green', '#1f5a42', 0.45, coat=0.3)
 M_GOLD = mat('gold', '#d8b25a', 0.25, 1.0)
-M_HONEY = mat('honey', '#e0951c', 0.12, coat=1.0)
-M_JAR = mat('jarlid', '#f0e7d8', 0.7)
-M_TWINE = mat('twine', '#a3172a', 0.6)
-M_DIPPER = mat('dipper', '#b98552', 0.5)
 M_IVORY = mat('ivory', '#f3ead6', 0.25, coat=0.6)
 M_PIP = mat('pip', '#b3172a', 0.3)
 
@@ -418,23 +414,247 @@ def menu():
     return parts
 
 
+# ---- honey jar: a glass jar of honey with a turned-wood dipper (touchable, true colour)
+def _revolve(name, profile, material, segs=64):
+    """Revolve (height, radius) about local Z, in order; a point with radius 0 becomes a pole.
+    Unlike lathe() this takes a closed outline (outside up, over the lip, inside down), so walls have thickness."""
+    bm = bmesh.new(); rings = []
+    for h, r in profile:
+        if r <= 1e-6: rings.append([bm.verts.new((0, 0, h))]); continue
+        rings.append([bm.verts.new((r * math.cos(2 * math.pi * i / segs), r * math.sin(2 * math.pi * i / segs), h)) for i in range(segs)])
+    for a, b in zip(rings, rings[1:]):
+        for i in range(segs):
+            j = (i + 1) % segs
+            if len(a) == 1: bm.faces.new((a[0], b[i], b[j]))
+            elif len(b) == 1: bm.faces.new((a[i], b[0], a[j]))
+            else: bm.faces.new((a[i], b[i], b[j], a[j]))
+    for ring in (rings[0], rings[-1]):
+        if len(ring) > 1: bm.faces.new(ring)
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    me = bpy.data.meshes.new(name); bm.to_mesh(me); bm.free()
+    ob = bpy.data.objects.new(name, me); link(ob); ob.data.materials.append(material); smooth(ob)
+    return ob
+
+
+def _bake_curve(ob):
+    """A curve as a plain mesh object (curve bounding boxes ignore the bevel; meshes keep bbox_world honest)."""
+    bpy.context.view_layer.update()
+    me = bpy.data.meshes.new_from_object(ob.evaluated_get(bpy.context.evaluated_depsgraph_get()))
+    mo = bpy.data.objects.new(ob.name, me); link(mo); mo.matrix_world = ob.matrix_world.copy()
+    nm = ob.name; bpy.data.objects.remove(ob, do_unlink=True); mo.name = nm; smooth(mo)
+    return mo
+
+
+def _noise(n, L, scale, detail=4, stretch=None):
+    tc = n.new('ShaderNodeTexCoord'); nz = n.new('ShaderNodeTexNoise')
+    nz.inputs['Scale'].default_value = scale; nz.inputs['Detail'].default_value = detail
+    if stretch:
+        mp = n.new('ShaderNodeMapping'); mp.inputs['Scale'].default_value = stretch
+        L.new(tc.outputs['Object'], mp.inputs[0]); L.new(mp.outputs[0], nz.inputs['Vector'])
+    else:
+        L.new(tc.outputs['Object'], nz.inputs['Vector'])
+    return nz
+
+
+def _ramp(n, L, src, stops):
+    cr = n.new('ShaderNodeValToRGB'); e = cr.color_ramp.elements
+    e[0].position, e[0].color = stops[0]; e[1].position, e[1].color = stops[1]
+    for pos, col in stops[2:]:
+        e.new(pos).color = col
+    L.new(src, cr.inputs[0]); return cr
+
+
+def _shadow_pass(m, tint=(1, 1, 1, 1)):
+    """Let shadow rays through a clear material (caustics are off, so glass would otherwise be opaque to light
+    and everything inside the jar would sit in the dark). The honey's volume still absorbs along the way."""
+    n, L = m.node_tree.nodes, m.node_tree.links
+    out = n['Material Output']; b = n['Principled BSDF']
+    lp = n.new('ShaderNodeLightPath'); tr = n.new('ShaderNodeBsdfTransparent'); tr.inputs['Color'].default_value = tint
+    mx = n.new('ShaderNodeMixShader')
+    L.new(lp.outputs['Is Shadow Ray'], mx.inputs[0]); L.new(b.outputs[0], mx.inputs[1]); L.new(tr.outputs[0], mx.inputs[2])
+    L.new(mx.outputs[0], out.inputs['Surface'])
+
+
+def _hex_cells(n, L, vec, scale):
+    """Distance from the centre of the nearest cell of a hexagonal (honeycomb) lattice wrapped round the
+    jar: 0 at a cell's centre, about 0.5 on its walls. vec is object space; u runs round the jar."""
+    sp = n.new('ShaderNodeSeparateXYZ'); L.new(vec, sp.inputs[0])
+    at = n.new('ShaderNodeMath'); at.operation = 'ARCTAN2'; L.new(sp.outputs['Y'], at.inputs[0]); L.new(sp.outputs['X'], at.inputs[1])
+    u = n.new('ShaderNodeMath'); u.operation = 'MULTIPLY_ADD'; L.new(at.outputs[0], u.inputs[0])
+    u.inputs[1].default_value = round(0.3 * scale * 2 * math.pi) / (2 * math.pi)   # a whole number of cells round
+    u.inputs[2].default_value = 100.0
+    v = n.new('ShaderNodeMath'); v.operation = 'MULTIPLY_ADD'; L.new(sp.outputs['Z'], v.inputs[0]); v.inputs[1].default_value = scale; v.inputs[2].default_value = 100.0
+    cv = n.new('ShaderNodeCombineXYZ'); L.new(u.outputs[0], cv.inputs[0]); L.new(v.outputs[0], cv.inputs[1])
+    R = (1.0, math.sqrt(3), 0.0); H = (0.5, math.sqrt(3) / 2, 0.0)
+    def wrap(src):
+        m = n.new('ShaderNodeVectorMath'); m.operation = 'MODULO'; L.new(src, m.inputs[0]); m.inputs[1].default_value = R
+        s_ = n.new('ShaderNodeVectorMath'); s_.operation = 'SUBTRACT'; L.new(m.outputs[0], s_.inputs[0]); s_.inputs[1].default_value = H
+        ln = n.new('ShaderNodeVectorMath'); ln.operation = 'LENGTH'; L.new(s_.outputs[0], ln.inputs[0])
+        return ln.outputs['Value']
+    sh = n.new('ShaderNodeVectorMath'); sh.operation = 'SUBTRACT'; L.new(cv.outputs[0], sh.inputs[0]); sh.inputs[1].default_value = H
+    mn = n.new('ShaderNodeMath'); mn.operation = 'MINIMUM'; L.new(wrap(cv.outputs[0]), mn.inputs[0]); L.new(wrap(sh.outputs[0]), mn.inputs[1])
+    return mn.outputs[0]
+
+
+def honey_materials():
+    """Glass, honey and turned wood for the honey jar."""
+    if 'hj_glass' in MATS: return MATS['hj_glass'], MATS['hj_honey'], MATS['hj_wood']
+    # glass: clear, IOR 1.5, faint smudges in the roughness and a slow wave in the surface (pressed glass)
+    g = bpy.data.materials.new('hj_glass'); g.use_nodes = True; n, L = g.node_tree.nodes, g.node_tree.links
+    b = n['Principled BSDF']
+    b.inputs['Base Color'].default_value = (0.93, 0.96, 0.93, 1)
+    b.inputs['Transmission Weight'].default_value = 1.0; b.inputs['IOR'].default_value = 1.5
+    b.inputs['Specular IOR Level'].default_value = 0.32   # tames the big key's reflection below clipping
+    smudge = _noise(n, L, 9.0, 6)
+    rr = _ramp(n, L, smudge.outputs['Fac'], [(0.45, (0.0, 0.0, 0.0, 1)), (0.75, (0.025, 0.025, 0.025, 1))])
+    L.new(rr.outputs['Color'], b.inputs['Roughness'])
+    wav = _noise(n, L, 3.0, 2); bu = n.new('ShaderNodeBump'); bu.inputs['Strength'].default_value = 0.04
+    L.new(wav.outputs['Fac'], bu.inputs['Height'])
+    # a band of moulded honeycomb cells round the shoulder (object space: the jar's own height 0..0.65)
+    tc = n.new('ShaderNodeTexCoord'); hexd = _hex_cells(n, L, tc.outputs['Object'], 21.0)
+    sz = n.new('ShaderNodeSeparateXYZ'); L.new(tc.outputs['Object'], sz.inputs[0])
+    band = n.new('ShaderNodeMapRange'); band.interpolation_type = 'SMOOTHSTEP'
+    band.inputs['From Min'].default_value = 0.29; band.inputs['From Max'].default_value = 0.33
+    L.new(sz.outputs['Z'], band.inputs['Value'])
+    band2 = n.new('ShaderNodeMapRange'); band2.interpolation_type = 'SMOOTHSTEP'
+    band2.inputs['From Min'].default_value = 0.5; band2.inputs['From Max'].default_value = 0.46
+    L.new(sz.outputs['Z'], band2.inputs['Value'])
+    mk = n.new('ShaderNodeMath'); mk.operation = 'MULTIPLY'; L.new(band.outputs['Result'], mk.inputs[0]); L.new(band2.outputs['Result'], mk.inputs[1])
+    mk2 = n.new('ShaderNodeMath'); mk2.operation = 'MULTIPLY'; mk2.inputs[1].default_value = 0.35; L.new(mk.outputs[0], mk2.inputs[0]); mk = mk2
+    cell = n.new('ShaderNodeMapRange'); cell.interpolation_type = 'SMOOTHSTEP'
+    cell.inputs['From Min'].default_value = 0.41; cell.inputs['From Max'].default_value = 0.5
+    L.new(hexd, cell.inputs['Value'])
+    hb = n.new('ShaderNodeBump'); hb.inputs['Distance'].default_value = 0.003
+    L.new(mk.outputs[0], hb.inputs['Strength']); L.new(cell.outputs['Result'], hb.inputs['Height'])
+    L.new(bu.outputs['Normal'], hb.inputs['Normal']); L.new(hb.outputs['Normal'], b.inputs['Normal'])
+    _shadow_pass(g, (0.92, 0.94, 0.9, 1))
+    MATS['hj_glass'] = g
+    # honey: a clear dielectric (IOR 1.49) coloured by absorption in its volume: gold where thin, deep amber
+    # in the core; it glows where the back light passes through it (a scatter volume costs too much here)
+    h = bpy.data.materials.new('hj_honey'); h.use_nodes = True; n, L = h.node_tree.nodes, h.node_tree.links
+    b = n['Principled BSDF']
+    b.inputs['Base Color'].default_value = srgb('#ffe6a8')
+    b.inputs['Transmission Weight'].default_value = 1.0; b.inputs['IOR'].default_value = 1.49
+    b.inputs['Specular IOR Level'].default_value = 0.38
+    # the open top is a touch soft (a skin of honey); sides and drips stay glassy
+    geo = n.new('ShaderNodeNewGeometry'); sz = n.new('ShaderNodeSeparateXYZ'); mr = n.new('ShaderNodeMapRange')
+    mr.inputs['From Min'].default_value = 0.8; mr.inputs['From Max'].default_value = 0.98
+    mr.inputs['To Min'].default_value = 0.02; mr.inputs['To Max'].default_value = 0.22
+    L.new(geo.outputs['Normal'], sz.inputs[0]); L.new(sz.outputs['Z'], mr.inputs['Value']); L.new(mr.outputs['Result'], b.inputs['Roughness'])
+    ab = n.new('ShaderNodeVolumeAbsorption'); ab.inputs['Color'].default_value = (0.95, 0.78, 0.05, 1)
+    ab.inputs['Density'].default_value = 7.0
+    L.new(ab.outputs[0], n['Material Output'].inputs['Volume'])
+    _shadow_pass(h)
+    MATS['hj_honey'] = h
+    # turned wood: grain runs along the dipper (local Z), oiled sheen
+    w = bpy.data.materials.new('hj_wood'); w.use_nodes = True; n, L = w.node_tree.nodes, w.node_tree.links
+    b = n['Principled BSDF']
+    grain = _noise(n, L, 6.0, 8, stretch=(14, 14, 0.6))
+    col = _ramp(n, L, grain.outputs['Fac'], [(0.3, srgb('#7a4a24')), (0.7, srgb('#c78d55')), (0.5, srgb('#a46a3a'))])
+    L.new(col.outputs['Color'], b.inputs['Base Color'])
+    rg = _ramp(n, L, grain.outputs['Fac'], [(0.3, (0.62, 0.62, 0.62, 1)), (0.7, (0.42, 0.42, 0.42, 1))])
+    L.new(rg.outputs['Color'], b.inputs['Roughness'])
+    bu = n.new('ShaderNodeBump'); bu.inputs['Strength'].default_value = 0.15; bu.inputs['Distance'].default_value = 0.002
+    L.new(grain.outputs['Fac'], bu.inputs['Height']); L.new(bu.outputs['Normal'], b.inputs['Normal'])
+    b.inputs['Specular IOR Level'].default_value = 0.45
+    MATS['hj_wood'] = w
+    return g, h, w
+
+
 def honey_jar():
-    """New in E (R8): honey comes from a jar he dips into, never from the counter."""
+    """New in E (R8): honey comes from a jar he dips into, never from the counter.
+    A squat glass jar with a threaded neck and a rolled lip, honey to just under the shoulder, a turned-wood
+    dipper resting in it (handle out to the upper left, where the app's dip point is) and a run of honey down
+    the outside. Lit by the bar plus two lights linked to the jar only: a tall softbox (window-shaped
+    highlights) and a warm back light so the honey glows against the dark wall."""
     Y = -0.85; x = 640; yb = surface_y(Y)
+    M_GL, M_HN, M_WD = honey_materials()
     parts = []
-    body = lathe('jar', [(0, 0), (0, 0.24), (0.03, 0.29), (0.38, 0.31), (0.52, 0.27), (0.56, 0.21), (0.64, 0.21), (0.66, 0.0)], M_HONEY, 48)
-    body.location = P(x, yb, 0); parts.append(body)
-    cloth = lathe('cloth', [(0.5, 0.0), (0.5, 0.25), (0.58, 0.29), (0.64, 0.27), (0.7, 0.18), (0.72, 0.0)], M_JAR, 48)
-    cloth.location = P(x, yb, 0); parts.append(cloth)
-    bpy.ops.mesh.primitive_torus_add(major_radius=0.235, minor_radius=0.018, location=P(x, yb - 55, 0)); tw = bpy.context.active_object
-    tw.data.materials.append(M_TWINE); smooth(tw); parts.append(tw)
-    # the dipper, leaning out of the jar
-    stick = lathe('dipper', [(0, 0.022), (0.55, 0.022), (0.6, 0.03)], M_DIPPER, 16)
-    head = lathe('dipperhead', [(-0.12, 0.0), (-0.11, 0.05), (-0.08, 0.065), (-0.05, 0.05), (-0.03, 0.065), (0.0, 0.05), (0.02, 0.03), (0.03, 0.0)], M_DIPPER, 20)
-    head.parent = stick
-    stick.location = P(x + 6, yb - 52, 0); stick.rotation_euler = (0.25, -0.5, 0)
-    parts += [stick, head]
+    base = P(x, yb, 0)
+    # glass: outside up, over the rolled lip, inside down; walls ~0.02, a thick base
+    outer = [(0.0, 0.0), (0.0, 0.25), (0.004, 0.275), (0.016, 0.292), (0.04, 0.30), (0.12, 0.304), (0.26, 0.302),
+             (0.33, 0.294), (0.39, 0.276), (0.44, 0.25), (0.48, 0.224), (0.505, 0.207), (0.52, 0.200), (0.61, 0.200),
+             (0.614, 0.207), (0.624, 0.213), (0.636, 0.211), (0.644, 0.203), (0.646, 0.194)]
+    inner = [(0.642, 0.185), (0.63, 0.181), (0.52, 0.181), (0.50, 0.188), (0.475, 0.205), (0.435, 0.232),
+             (0.385, 0.258), (0.33, 0.275), (0.26, 0.282), (0.12, 0.283), (0.075, 0.279), (0.058, 0.265), (0.052, 0.24), (0.05, 0.0)]
+    glass = _revolve('jar_glass', outer + inner, M_GL, 72); glass.location = base; parts.append(glass)
+    # the inside surface is a touch less polished: its concave back wall otherwise mirrors the big key
+    # light into one clipped white dot right where the honey meets the glass
+    M_GLI = MATS.get('hj_glass_in')
+    if not M_GLI:
+        M_GLI = M_GL.copy(); M_GLI.name = 'hj_glass_in'; MATS['hj_glass_in'] = M_GLI
+        bi = M_GLI.node_tree.nodes['Principled BSDF']
+        for l in list(bi.inputs['Roughness'].links): M_GLI.node_tree.links.remove(l)
+        bi.inputs['Roughness'].default_value = 0.045; bi.inputs['Specular IOR Level'].default_value = 0.25
+    glass.data.materials.append(M_GLI)
+    for f in glass.data.polygons:
+        if f.index // 72 >= len(outer): f.material_index = 1
+    # moulded thread on the neck: 1.6 turns of a raised glass bead, tapered at both ends
+    th = []; N = 90
+    for i in range(N + 1):
+        t = i / N; a = math.radians(-30) + t * 1.6 * 2 * math.pi
+        th.append((0.199 * math.cos(a), 0.199 * math.sin(a), 0.535 + t * 0.055))
+    thread = curve_obj('jar_thread', [th], 0.0055, M_GL)
+    for i, p in enumerate(thread.data.splines[0].points):
+        t = i / N; p.radius = max(0.05, min(1.0, t / 0.08, (1 - t) / 0.08))
+    thread.location = base; thread = _bake_curve(thread); parts.append(thread)
+    # honey: follows the inside wall (a hair inside it) to the fill line, then a meniscus climbing the glass
+    hf = 0.355; ins = 0.0015
+    rw = 0.275 + (0.258 - 0.275) * (hf + 0.012 - 0.33) / (0.385 - 0.33) - ins
+    hon = [(0.05 + ins, 0.0), (0.052 + ins, 0.238), (0.058 + ins, 0.262), (0.075 + ins, 0.276), (0.12, 0.282 - ins),
+           (0.26, 0.281 - ins), (0.33, 0.274 - ins), (hf + 0.012, rw), (hf + 0.006, rw - 0.006), (hf + 0.002, rw - 0.02),
+           (hf, rw - 0.045), (hf, 0.0)]
+    honey = _revolve('jar_honey', hon, M_HN, 72); honey.location = base; parts.append(honey)
+    # the dipper: one turned piece. Grooved head (5 rings), thin neck, collar, tapered handle, knob.
+    prof = [(-0.088, 0.0), (-0.087, 0.014)]
+    for i in range(41):
+        t = i / 40; z = -0.085 + t * 0.17
+        env = math.sin(math.pi * (0.06 + 0.88 * t)) ** 0.45
+        prof.append((z, env * (0.047 + 0.012 * math.cos(2 * math.pi * 5 * t))))
+    prof += [(0.09, 0.02), (0.10, 0.016), (0.125, 0.016), (0.13, 0.024), (0.142, 0.025), (0.148, 0.019),
+             (0.20, 0.0185), (0.45, 0.0165), (0.56, 0.0175), (0.60, 0.0215), (0.61, 0.0175), (0.625, 0.0215),
+             (0.65, 0.029), (0.675, 0.03), (0.698, 0.022), (0.708, 0.008), (0.71, 0.0)]
+    dip = _revolve('dipper', prof, M_WD, 32)
+    # honey clinging to the lower head, and a strand falling from its tip to the surface
+    coat = [(-0.094, 0.0), (-0.092, 0.02)]
+    for i in range(25):
+        t = i / 24; z = -0.09 + t * 0.12
+        env = math.sin(math.pi * (0.04 + 0.6 * t)) ** 0.5
+        coat.append((z, env * 0.058 + 0.004 * math.cos(2 * math.pi * 5 * t)))
+    coat += [(0.035, 0.03), (0.04, 0.0)]
+    hcoat = _revolve('dipper_honey', coat, M_HN, 32); hcoat.parent = dip
+    head = Vector((0.065, -0.03, 0.445)); axis = Vector((-0.5, -0.14, 1.0)).normalized()
+    dip.rotation_euler = axis.to_track_quat('Z', 'Y').to_euler()
+    dip.location = base + head
+    tip = head - axis * 0.092
+    spts = [tuple(base + tip + Vector((0.004 * math.sin(i), 0, -(tip.z - hf) * i / 8))) for i in range(9)]
+    strand = curve_obj('dipper_strand', [spts], 0.006, M_HN)
+    for i, p in enumerate(strand.data.splines[0].points): p.radius = [1.3, 0.8, 0.55, 0.45, 0.4, 0.45, 0.6, 1.0, 1.8][i]
+    strand = _bake_curve(strand)
+    parts += [dip, hcoat, strand]
+    # a run of honey from the lip down the outside, front right, ending in a bead on the shoulder
+    a = math.radians(-62); ca, sa = math.cos(a), math.sin(a)
+    run = [(0.198, 0.647), (0.212, 0.637), (0.219, 0.62), (0.21, 0.6), (0.208, 0.565), (0.209, 0.53), (0.218, 0.505),
+           (0.24, 0.48), (0.263, 0.455), (0.283, 0.425), (0.297, 0.395), (0.303, 0.37)]
+    drip = curve_obj('jar_drip', [[tuple(base + Vector((rr * ca, rr * sa, hh))) for rr, hh in run]], 0.0075, M_HN)
+    for i, p in enumerate(drip.data.splines[0].points): p.radius = [0.9, 1.0, 0.9, 0.8, 0.75, 0.7, 0.7, 0.72, 0.75, 0.85, 1.05, 1.25][i]
+    parts.append(_bake_curve(drip))
     group('honeyjar', parts, Y)
+    # lights for the jar alone (light linking, so the rest of the bar is untouched): a tall softbox up
+    # front-left for window-shaped highlights, and a warm back light behind the jar so the honey glows
+    rc = bpy.data.collections.new('honeyjar_lit')
+    for o in parts: rc.objects.link(o)
+    bpy.context.view_layer.update()
+    c0 = glass.matrix_world.translation + Vector((0, 0, 0.3))
+    for name, off, energy, colour, sx, sy in (('honey_soft', Vector((-1.6, -2.2, 1.4)), 20, '#ffe2bd', 0.35, 1.1),
+                                              ('honey_back', Vector((0.1, 1.2, -0.2)), 42, '#ffb04a', 1.0, 0.22)):
+        ld = bpy.data.lights.new(name, 'AREA'); ld.energy = energy; ld.color = srgb(colour)[:3]
+        ld.shape = 'RECTANGLE'; ld.size = sx; ld.size_y = sy
+        ob = bpy.data.objects.new(name, ld); link(ob)
+        ob.location = c0 + off
+        ob.rotation_euler = (c0 - ob.location).to_track_quat('-Z', 'Y').to_euler()
+        ob.visible_camera = False
+        ob.light_linking.receiver_collection = rc
     return parts
 
 
