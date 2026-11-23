@@ -52,6 +52,7 @@ STILLS = _arg('--stills')
 SHEET = _arg('--sheet')
 SHEETS_ONLY = '--sheets-from-frames' in ARGS
 DEBUG = '--debug' in ARGS
+FACE_GAIN = float(_arg('--facegain', '2'))   # calibrated on 3x head stills: 1 is too faint at tablet size, 4 a cartoon
 FRAMES_ARG = _arg('--frames')              # a full render of only these frame numbers (comma list), for re-renders
 
 DIO = os.path.join(PROTO, 'img', 'dio')
@@ -1017,7 +1018,7 @@ def face(smile=0.0, open_=0.0, brow=(0.0, 0.0), wink=(0.0, 0.0), look=(0.0, 0.0)
     Weighted face bones (all unconnected): levator05 = mouth corner, oris03/oris07 = upper/lower lip sides,
     oris05/oris01 = upper/lower lip middle, risorius03 = cheek, levator06 = nostril, oculi01 = brow,
     orbicularis03/04 = upper/lower lid, eye = the eyeball. Offsets are rig metres (his face is ~0.14 wide)."""
-    sm = smile
+    sm = smile * FACE_GAIN
     for side, sx, bi in (('L', 1, 0), ('R', -1, 1)):
         nudge('levator05.' + side, (sx * 0.006 * sm, 0.005 * sm, 0.010 * sm - 0.002 * open_))     # the corners up, out and back
         nudge('oris03.' + side, (sx * 0.0035 * sm, 0.0025 * sm, 0.004 * sm))
@@ -1030,7 +1031,7 @@ def face(smile=0.0, open_=0.0, brow=(0.0, 0.0), wink=(0.0, 0.0), look=(0.0, 0.0)
         rot('eye.' + side, (0, 0, 1), look[0]); rot('eye.' + side, (1, 0, 0), -look[1])
     nudge('oris05', (0, 0.0015 * sm, 0.0012 * sm))
     nudge('oris01', (0, 0.002 * sm, -0.0012 * open_))
-    rot('jaw', (1, 0, 0), 6.5 * open_)
+    rot('jaw', (1, 0, 0), 5.0 * open_)
 
 
 def rest_pose():
@@ -1312,7 +1313,8 @@ def L_polish(t, pr):
     up = track(t, [(0.0, 0), (0.3, 0, 'h'), (0.42, 1.0), (0.66, 1.0, 'h'), (0.8, 0), (0.99, 0, 'h')])
     body_pose(bend=4 + 1.2 * math.sin(a), twist=-3 + 2 * math.sin(a + 0.4), lean=1.2 * math.sin(a + 1),
               pitch=17 - 21 * up, yaw=-2 + 3 * math.sin(a) + 4 * up, roll=2 + 5 * up, breath=0.5 + 0.5 * math.sin(a))
-    face(smile=0.45 + 0.4 * up, brow=(0.75 * up, 0.2 * up), look=(4 * up, 14 * up - 6 * (1 - up)), squint=0.25 + 0.25 * up)
+    wk = bump(t, 0.47, 0.6)                                          # a quick wink at the top of the glance
+    face(smile=0.45 + 0.4 * up, brow=(0.75 * up, 0.2 * up), wink=(0.0, wk), look=(4 * up, 14 * up - 6 * (1 - up)), squint=0.25 + 0.25 * up)
     fist = S2W(CX + 70 + 3 * math.sin(a + 0.5), 590 + 2 * math.cos(a), D_HAND - 0.1)
     clavicle_follow('L', fist)
     set_pole('L', (2.6, 1.2, -3.6)); set_pole('R', (2.6, 1.0, -3.2))
