@@ -1506,18 +1506,18 @@ def L_dip(t, pr):
 # name: (pose, frames, fps, hold frame, props). Steps with a hold play once past the app's 3.2 s of acting,
 # then loop from `hold`; steps with hold 0 are cycles whose frame 0 is the still he waits on.
 LOOPS = {
-    'polish': (L_polish, 20, 10, 0, ('glass',)),
+    'polish': (L_polish, 18, 10, 0, ('glass',)),
     'stir': (L_stir, 14, 10, 0, ('thyrsus',)),
     'pour': (L_pour, 28, 8.5, 21, ('bottle',)),
     'shake': (L_shake, 12, 12, 0, ('shaker',)),
     'reach': (L_reach, 28, 8.5, 22, ('small',)),
-    'story': (L_story, 18, 8, 0, ()),
+    'story': (L_story, 16, 8, 0, ()),
     'dip': (L_dip, 28, 8.5, 22, ('thyrsus',)),
 }
 RECT = (560, 290, 1040, 640)     # world rect of every frame (the counter clips him below ~630 in the app)
-K = float(_arg('--k', '1.3'))    # pixels per world unit
-SAMPLES = int(_arg('--samples', '24'))
-QUALITY = int(_arg('--q', '58'))
+K = float(_arg('--k', '1.2'))    # pixels per world unit
+SAMPLES = int(_arg('--samples', '16'))
+QUALITY = int(_arg('--q', '50'))
 
 
 def props_for(kinds):
@@ -1577,7 +1577,7 @@ def render_loop(name):
         if PREVIEW:
             bg = Image.new('RGBA', im.size, (40, 30, 26, 255)); bg.alpha_composite(im)
             bg.save(os.path.join(WORK, f'preview_{name}_{FINISH}.png')); continue
-        im.save(os.path.join(OUT, name, f'{f + 1:04d}.webp'), 'WEBP', quality=QUALITY, method=6, alpha_quality=80)
+        im.save(os.path.join(OUT, name, f'{f + 1:04d}.webp'), 'WEBP', quality=QUALITY, method=6, alpha_quality=60)
     rel = os.path.relpath(OUT, PROTO).replace(os.sep, '/')
     return {'frames': [f'{rel}/{name}/{f + 1:04d}.webp' for f in range(nf)], 'fps': fps, 'hold': hold,
             'secondsPerFrame': round(sum(times) / len(times), 1)}
@@ -1647,7 +1647,7 @@ if __name__ == 'build_dionysus' or True:
             man['head'] = head_rect()
             man['about'] = ABOUT
             man['render'] = {'engine': 'Cycles (CPU, 4 threads)', 'samples': SAMPLES, 'adaptiveThreshold': 0.02,
-                             'denoiser': 'OpenImageDenoise', 'pxPerWorldUnit': K, 'webp': {'quality': QUALITY, 'alphaQuality': 80, 'method': 6}}
+                             'denoiser': 'OpenImageDenoise', 'pxPerWorldUnit': K, 'webp': {'quality': QUALITY, 'alphaQuality': 60, 'method': 6}}
             man.pop('finish', None)
             out = {k_: man[k_] for k_ in ('rect', 'head', 'about', 'render', 'loops', 'finishes') if k_ in man}
             json.dump(out, open(MAN_P, 'w'), indent=1)
