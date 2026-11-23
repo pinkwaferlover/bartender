@@ -518,24 +518,483 @@ if ITEM in ('menu', 'honey', 'dice'):
 
 
 # ---------------------------------------------------------------- bottles: one per Style (Q6)
-# Profiles follow prototype B's family silhouettes (draw.js BOT): (svg y, half-width), svg y 96 is the base.
+# Each bottle is real glass: a thick shell (outer and inner wall, a heavy base, a punt), a separate
+# liquid volume inside it filled to below the shoulder, paper labels that sit on the glass, and a
+# closure per Family. Profiles are (height above the base, radius) key points in prototype B's svg
+# units (1 unit is about 3 mm on a real bottle); a monotone cubic makes them smooth, so shoulders
+# curve into the neck and the lip is a real bead. Family silhouettes keep B's widths and heights.
 PROFILES = {
-    'whisky': [(96, 0), (96, 20), (93, 24), (41, 24), (30, 15), (22, 7), (6, 7), (5, 0)],
-    'gin': [(96, 0), (96, 12), (92, 14), (32, 14), (24, 6), (6, 6), (5, 0)],
-    'rum': [(96, 0), (96, 18), (92, 21), (52, 21), (38, 14), (30, 5), (6, 5), (5, 0)],
-    'tequila': [(96, 0), (96, 14), (92, 17), (34, 17), (25, 5), (6, 5), (5, 0)],
-    'vodka': [(96, 0), (96, 10), (92, 12), (40, 12), (31, 4), (6, 4), (5, 0)],
-    'brandy': [(96, 0), (95, 12), (88, 20), (74, 25), (60, 24), (46, 15), (34, 5), (6, 5), (5, 0)],
-    'aperitif': [(96, 0), (96, 13), (92, 16), (52, 16), (38, 9), (32, 4), (6, 4), (5, 0)],
-    'bitters': [(96, 0), (95, 9), (88, 15), (72, 17), (58, 13), (46, 3), (20, 3), (19, 0)],
-    'mixer': [(96, 0), (96, 12), (92, 14), (44, 14), (32, 8), (26, 6), (18, 6), (17, 0)],
+    'whisky': [(0, 21.6), (1.2, 23.2), (4, 23.8), (54, 23.8), (60, 22.6), (65, 18), (69, 11), (72, 8), (75, 7.4),
+               (84, 7.2), (84.8, 8.4), (87.6, 8.4), (88.4, 7.4)],
+    'gin': [(0, 12.4), (1, 13.7), (3, 14.2), (58, 14.2), (64, 13.4), (69, 10.4), (73, 7.4), (76, 6.2), (85, 6),
+            (85.6, 6.8), (88, 6.8)],
+    'rum': [(0, 19.4), (1.2, 20.8), (4, 21.2), (44, 21.2), (50, 20), (55, 15), (59, 9), (62, 6), (64, 5.3), (82, 5.1),
+            (82.8, 6.3), (86, 6.3), (86.6, 5.6)],
+    'tequila': [(0, 16.6), (1, 17.6), (3, 17.8), (20, 17.2), (48, 15.6), (56, 14), (61, 10), (65, 6.6), (68, 5.4),
+                (82, 5.2), (82.8, 6.2), (85.6, 6.2), (86.2, 5.5)],
+    'vodka': [(0, 10.6), (1, 11.7), (3, 12.1), (52, 12.1), (58, 11.4), (63, 8.6), (67, 5.6), (70, 4.8), (84, 4.6),
+              (84.6, 5.4), (87, 5.4)],
+    'brandy': [(0, 11.5), (1, 13.2), (4, 17.6), (10, 22.2), (18, 25), (26, 25.2), (34, 23.4), (42, 18.4), (49, 11.5),
+               (54, 7), (58, 5.2), (82, 4.9), (82.8, 6), (85.6, 6), (86.2, 5.3)],
+    'aperitif': [(0, 14.4), (1.2, 15.8), (4, 16.2), (50, 16.2), (56, 15.4), (62, 11.8), (67, 7.6), (71, 5.2),
+                 (85, 4.6), (85.6, 5.4), (88.4, 5.4)],
+    'bitters': [(0, 13.4), (1, 14.8), (3, 15.2), (46, 15.2), (52, 14.2), (58, 10), (62, 6), (65, 4.4), (71, 4.2),
+                (71.6, 5.2), (74, 5.2)],
+    'mixer': [(0, 12.4), (1, 13.7), (3, 14.1), (36, 14.1), (42, 13.4), (50, 10.6), (58, 8), (68, 6.4), (74.6, 6),
+              (75.2, 7.2), (77, 7.2), (77.6, 6.4)],
 }
 BOTTLE_SCALE = {'bitters': 0.78, 'mixer': 0.9}
-LABEL_BAND = {  # (svg y top, svg y bottom, colour) per Family: a label layout, never wording
-    'whisky': [(52, 78, '#f1e6cf')], 'gin': [(44, 84, '#f4f1e8')], 'rum': [(58, 78, '#e8d7a8')],
-    'tequila': [(52, 74, '#1f4a3a')], 'vodka': [(56, 70, '#ffffff')], 'brandy': [(62, 76, '#1c1410')],
-    'aperitif': [(56, 74, '#f3ead6'), (60, 63, '#c2141c')], 'bitters': [(44, 88, '#f4eedd')], 'mixer': [(50, 62, '#2f5a7a')],
+# a few Styles have their own silhouette inside the Family (same width class and height)
+STYLE_PROFILE = {
+    'islay scotch': [(0, 20), (1.2, 21.6), (4, 22), (48, 22), (56, 20.5), (63, 15), (68, 9.5), (72, 7.6), (84, 7.3),
+                     (84.8, 8.4), (87.6, 8.4), (88.4, 7.4)],
+    'irish whiskey': [(0, 18.4), (1.2, 20), (4, 20.4), (50, 20.4), (56, 18.6), (61, 12.5), (65, 7.6), (68, 6.4), (85, 6.2),
+                      (85.8, 7.4), (88.6, 7.4), (89.2, 6.6)],
+    'rye': [(0, 19.4), (1.2, 21), (4, 21.4), (58, 21.4), (62, 20.4), (66, 15), (69.5, 9), (72, 7.4), (85, 7.2),
+            (85.8, 8.2), (88.6, 8.2), (89.2, 7.2)],
 }
+# per Family: wall, base thickness, punt height, fill line, squareness of the body (0 round .. 1 square,
+# fading out over the shoulder between the two heights), glass tint
+BOTTLE_FORM = {
+    'whisky':   dict(wall=1.1, base=5.0, punt=1.2, fill=50, sq=(0.75, 56, 68), glass='#f6f7f2'),
+    'gin':      dict(wall=1.0, base=4.0, punt=0.8, fill=55, sq=(0.55, 60, 72), glass='#e6f2e8'),
+    'rum':      dict(wall=1.0, base=4.0, punt=1.0, fill=43, sq=None, glass='#f4f4ee'),
+    'tequila':  dict(wall=1.0, base=5.0, punt=0.8, fill=46, sq=None, glass='#f6f7f2'),
+    'vodka':    dict(wall=1.0, base=4.0, punt=0.6, fill=50, sq=None, glass='#f6f8f8'),
+    'brandy':   dict(wall=1.0, base=3.5, punt=1.6, fill=36, sq=None, glass='#f4f2ea'),
+    'aperitif': dict(wall=0.9, base=4.6, punt=3.4, fill=48, sq=None, glass='#f2f4ee'),
+    'bitters':  dict(wall=0.9, base=3.0, punt=0.6, fill=44, sq=None, glass='#c88a44'),
+    'mixer':    dict(wall=1.0, base=3.0, punt=0.8, fill=62, sq=None, glass='#eef4ee'),
+}
+# within a Family, a few Styles differ in body, stopper and label, so the shelf is not a row of clones
+STYLE_FORM = {'islay scotch': dict(sq=None), 'irish whiskey': dict(sq=(0.3, 56, 68)), 'rye': dict(sq=(0.45, 56, 68)),
+              'amaretto': dict(fill=40), 'cherry heering': dict(fill=33)}
+STYLE_WOOD = {'rye': '#1a1412', 'islay scotch': '#2a1a10', 'irish whiskey': '#6a4626', 'blended scotch': '#1e1612',
+              'amaretto': '#5a3a20', 'cherry heering': '#1a1210'}
+STYLE_LAYOUT = {'islay scotch': 'whisky2', 'blended scotch': 'whisky2', 'cherry heering': 'whisky2', 'coffee liqueur': 'whisky2'}
+STYLE_GLASS = {'islay scotch': '#d8ecd2', 'london dry gin': '#d6ecdc', 'sweet vermouth': '#eef0e4',
+               'ginger beer': '#e2d6b8', 'ginger ale': '#dcecd6'}
+# Paper labels per Family: (kind, h0, h1, half-angle in degrees). 'front' is a patch facing the camera,
+# 'wrap' goes all round at a fixed radius (bitters' oversized label stands off the shoulder).
+LABEL_BAND = {
+    'whisky': [('front', 13, 45, 33), ('neck', 75.5, 81, 75)],
+    'gin': [('front', 16, 52, 40), ('neck', 77, 82, 70)],
+    'rum': [('front', 9, 36, 52)],
+    'tequila': [('front', 12, 40, 48)],
+    'vodka': [('front', 14, 44, 50)],
+    'brandy': [('front', 10, 33, 46), ('neck', 66, 76, 65)],
+    'aperitif': [('front', 14, 40, 58), ('neck', 64, 70, 62)],
+    'bitters': [('wrap', 4, 55, 180)],
+    'mixer': [('front', 14, 32, 64), ('neck', 61, 67, 70)],
+}
+LABEL_ACCENT = {'gin': '#2f6a52', 'vodka': '#2b3f66', 'rum': '#8a2a1c', 'tequila': '#1f4a3a', 'mixer': '#2f5a7a',
+                'aperitif': '#1f3a5a', 'whisky': '#7a2a18', 'brandy': '#5a1a12', 'bitters': '#8a2a14'}
+STYLE_ACCENT = {'triple sec': '#c8611c', 'tonic water': '#9a7a2a', 'ginger ale': '#2f5a3a', 'ginger beer': '#7a3a18'}
+BOTTLE_SPP = 160          # glass with liquid needs more than the 32 spp the opaque bottles used
+
+
+def _pchip(xs, ys):
+    """Monotone cubic through the key points (no overshoot): a smooth radius for every height."""
+    n = len(xs); d = [(ys[i + 1] - ys[i]) / (xs[i + 1] - xs[i]) for i in range(n - 1)]
+    m = [d[0]] + [0.0 if d[i - 1] * d[i] <= 0 else
+                  3 * (xs[i + 1] - xs[i - 1]) / ((2 * xs[i + 1] - xs[i] - xs[i - 1]) / d[i - 1] + (xs[i + 1] + xs[i] - 2 * xs[i - 1]) / d[i])
+                  for i in range(1, n - 1)] + [d[-1]]
+
+    def f(x):
+        x = min(max(x, xs[0]), xs[-1]); i = max(j for j in range(n - 1) if xs[j] <= x) if x < xs[-1] else n - 2
+        h = xs[i + 1] - xs[i]; t = (x - xs[i]) / h
+        return ((2 * t ** 3 - 3 * t ** 2 + 1) * ys[i] + (t ** 3 - 2 * t ** 2 + t) * h * m[i]
+                + (-2 * t ** 3 + 3 * t ** 2) * ys[i + 1] + (t ** 3 - t ** 2) * h * m[i + 1])
+    return f
+
+
+def _heights(h0, h1, keys, step=0.6):
+    hs = {round(h0, 4), round(h1, 4)} | {round(k, 4) for k in keys if h0 < k < h1}
+    n = max(2, int((h1 - h0) / step)); hs |= {round(h0 + (h1 - h0) * i / n, 4) for i in range(n + 1)}
+    return sorted(hs)
+
+
+def _sq_dir(a, q):
+    """Unit direction at angle a on a rounded square (superellipse), q 0 = circle .. 1 = squarish."""
+    if q <= 0.001: return math.cos(a), math.sin(a)
+    e = 2 / (2 + q * 8); c, s = math.cos(a), math.sin(a)
+    return math.copysign(abs(c) ** e, c), math.copysign(abs(s) ** e, s)
+
+
+def _revolve(name, path, material, sqf, segs=72, a0=0.0, a1=2 * math.pi, uv=None):
+    """Revolve a (height, radius) path. sqf(h) gives the squareness. A partial sweep (a0..a1) makes a
+    patch with UVs (u along the sweep, v from uv=(h0, h1)); a full sweep is closed."""
+    full = abs(a1 - a0 - 2 * math.pi) < 1e-6
+    bm = bmesh.new(); rings = []; cols = segs if full else segs + 1
+    for h, rr in path:
+        q = sqf(h); ring = []
+        for i in range(cols):
+            a = a0 + (a1 - a0) * i / segs; cx, sy = _sq_dir(a, q)
+            ring.append(bm.verts.new((rr * cx, rr * sy, h)))
+        rings.append(ring)
+    faces = []
+    for k, (ra, rb) in enumerate(zip(rings, rings[1:])):
+        for i in range(segs):
+            j = (i + 1) % cols
+            try: faces.append((bm.faces.new((ra[i], ra[j], rb[j], rb[i])), i, k))
+            except ValueError: pass
+    if uv:
+        lay = bm.loops.layers.uv.new(); h0, h1 = uv; bm.verts.index_update(); uvs = {}
+        for k, ring in enumerate(rings):   # u by arc length, so a squarish face is not stretched in the middle
+            cum = [0.0]
+            for va, vb in zip(ring, ring[1:]): cum.append(cum[-1] + (vb.co - va.co).length)
+            tot = cum[-1] or 1.0
+            for i, v in enumerate(ring): uvs[v.index] = (cum[i] / tot, (path[k][0] - h0) / (h1 - h0))
+        for f, i, k in faces:
+            for lp in f.loops: lp[lay].uv = uvs[lp.vert.index]
+    bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=1e-7)
+    if full: bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    me = bpy.data.meshes.new(name); bm.to_mesh(me); bm.free()
+    ob = bpy.data.objects.new(name, me); link(ob); ob.data.materials.append(material); smooth(ob)
+    return ob
+
+
+def _nodes(name):
+    m = bpy.data.materials.new(name); m.use_nodes = True
+    return m, m.node_tree.nodes, m.node_tree.links, m.node_tree.nodes['Principled BSDF']
+
+
+def _noise(n, L, scale, detail=4, coord='Object'):
+    tc = n.new('ShaderNodeTexCoord'); nz = n.new('ShaderNodeTexNoise')
+    nz.inputs['Scale'].default_value = scale; nz.inputs['Detail'].default_value = detail
+    L.new(tc.outputs[coord], nz.inputs['Vector']); return nz
+
+
+def _maprange(n, L, src, a, b):
+    mr = n.new('ShaderNodeMapRange'); mr.inputs['To Min'].default_value = a; mr.inputs['To Max'].default_value = b
+    L.new(src, mr.inputs['Value']); return mr.outputs['Result']
+
+
+def glass_material(tint):
+    key = 'glass_' + tint
+    if key in MATS: return MATS[key]
+    m, n, L, b = _nodes(key)
+    b.inputs['Base Color'].default_value = srgb(tint); b.inputs['Transmission Weight'].default_value = 1.0
+    b.inputs['IOR'].default_value = 1.5
+    nz = _noise(n, L, 9.0, 6)        # faint smudges: roughness 0.01..0.07
+    L.new(_maprange(n, L, nz.outputs['Fac'], 0.0, 0.07), b.inputs['Roughness'])
+    MATS[key] = m; return m
+
+
+def liquid_material(colour, d_ref):
+    """Clear liquid surface (IOR 1.36) with a Volume Absorption tuned so that light crossing the bottle's
+    full width comes out in the Style's colour: richer in the middle, lighter at the thin edges."""
+    key = f'liquid_{colour}'
+    if key in MATS: return MATS[key]
+    m, n, L, b = _nodes(key)
+    b.inputs['Base Color'].default_value = (1, 1, 1, 1); b.inputs['Transmission Weight'].default_value = 1.0
+    b.inputs['Roughness'].default_value = 0.0; b.inputs['IOR'].default_value = 1.36
+    c = srgb(colour)[:3]; lum = 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]
+    if lum > 0.55: c = [x ** 0.35 for x in c]          # clear spirits and sodas: only a faint tint
+    sig = [-math.log(max(x, 0.004)) / d_ref for x in c]; D = max(max(sig), 1e-4)
+    va = n.new('ShaderNodeVolumeAbsorption'); va.inputs['Color'].default_value = (*[1 - s / D for s in sig], 1)
+    va.inputs['Density'].default_value = D
+    L.new(va.outputs[0], n['Material Output'].inputs['Volume'])
+    MATS[key] = m; return m
+
+
+def _darker(h, k):
+    c = [int(h.lstrip('#')[i:i + 2], 16) for i in (0, 2, 4)]
+    return '#%02x%02x%02x' % tuple(int(x * k) for x in c)
+
+
+def label_texture(fam, aspect):
+    """A paper label drawn as masks, no words: R = accent print, G = dark ink, B = gold foil, A = paper."""
+    from PIL import Image, ImageDraw
+    p = os.path.join(WORK, f'bottle_label_{fam}_{aspect:.2f}.png')
+    H = 512; W = max(64, int(H * aspect)); im = Image.new('RGBA', (W, H), (0, 0, 0, 255)); d = ImageDraw.Draw(im)
+    R, G, B = (255, 0, 0, 255), (0, 255, 0, 255), (0, 0, 255, 255)
+    cx, cy = W / 2, H / 2
+    def rule(y, w, c, x0=0.08, x1=0.92): d.rectangle([W * x0, y, W * x1, y + w], fill=c)
+    if fam == 'whisky':
+        d.rectangle([10, 10, W - 11, H - 11], outline=R, width=10); d.rectangle([28, 28, W - 29, H - 29], outline=B, width=4)
+        d.rectangle([28, H * 0.62, W - 29, H * 0.8], fill=R)
+        d.ellipse([cx - H * 0.2, H * 0.14, cx + H * 0.2, H * 0.52], outline=B, width=8)
+        d.polygon([(cx, H * 0.23), (cx + H * 0.07, H * 0.33), (cx, H * 0.43), (cx - H * 0.07, H * 0.33)], fill=B)
+        rule(H * 0.86, 5, G, 0.25, 0.75)
+    elif fam == 'whisky2':   # a dark field with a foil frame and a pale panel
+        d.rectangle([0, 0, W, H], fill=G); d.rectangle([14, 14, W - 15, H - 15], outline=B, width=5)
+        d.rectangle([W * 0.16, H * 0.3, W * 0.84, H * 0.66], fill=(0, 0, 0, 255))
+        d.rectangle([W * 0.16, H * 0.3, W * 0.84, H * 0.66], outline=R, width=8)
+        d.ellipse([cx - H * 0.08, H * 0.08, cx + H * 0.08, H * 0.24], outline=B, width=5)
+        rule(H * 0.76, 6, R, 0.3, 0.7); rule(H * 0.84, 4, B, 0.36, 0.64)
+    elif fam == 'gin':
+        d.rectangle([8, 8, W - 9, H - 9], outline=R, width=6)
+        d.polygon([(cx, H * 0.12), (W * 0.86, cy), (cx, H * 0.88), (W * 0.14, cy)], outline=R, width=9)
+        d.polygon([(cx, H * 0.22), (W * 0.76, cy), (cx, H * 0.78), (W * 0.24, cy)], fill=R)
+        d.ellipse([cx - H * 0.08, cy - H * 0.08, cx + H * 0.08, cy + H * 0.08], fill=B)
+        rule(H * 0.05, 4, B); rule(H * 0.94, 4, B)
+    elif fam == 'rum':
+        d.rectangle([0, 0, W, H * 0.42], fill=R); rule(H * 0.42, 8, B, 0, 1)
+        d.ellipse([cx - H * 0.2, H * 0.2, cx + H * 0.2, H * 0.6], fill=(0, 0, 0, 255), outline=B, width=10)
+        d.ellipse([cx - H * 0.08, H * 0.32, cx + H * 0.08, H * 0.48], fill=R)
+        rule(H * 0.8, 6, G, 0.2, 0.8); rule(H * 0.88, 6, G, 0.3, 0.7)
+    elif fam == 'tequila':
+        d.rectangle([12, 12, W - 13, H - 13], outline=R, width=18)
+        for k in range(16):
+            a = 2 * math.pi * k / 16
+            d.polygon([(cx, cy * 0.9), (cx + math.cos(a - 0.1) * H * 0.3, cy * 0.9 + math.sin(a - 0.1) * H * 0.3),
+                       (cx + math.cos(a + 0.1) * H * 0.3, cy * 0.9 + math.sin(a + 0.1) * H * 0.3)], fill=B)
+        d.ellipse([cx - H * 0.13, cy * 0.9 - H * 0.13, cx + H * 0.13, cy * 0.9 + H * 0.13], fill=R)
+        rule(H * 0.82, 6, G, 0.2, 0.8)
+    elif fam == 'vodka':
+        rule(H * 0.1, 4, R, 0.06, 0.94); rule(H * 0.88, 4, R, 0.06, 0.94)
+        d.rectangle([0, H * 0.44, W, H * 0.58], fill=R); rule(H * 0.4, 3, B, 0, 1); rule(H * 0.61, 3, B, 0, 1)
+        d.ellipse([cx - H * 0.07, H * 0.2, cx + H * 0.07, H * 0.34], outline=G, width=5)
+    elif fam == 'brandy':
+        d.rectangle([0, 0, W, H], fill=(0, 0, 0, 0))
+        d.ellipse([6, 6, W - 7, H - 7], fill=(0, 0, 0, 255), outline=R, width=14)
+        d.ellipse([30, 30, W - 31, H - 31], outline=B, width=5)
+        d.rectangle([W * 0.12, H * 0.56, W * 0.88, H * 0.7], fill=R)
+        d.polygon([(cx, H * 0.16), (cx + H * 0.1, H * 0.3), (cx, H * 0.44), (cx - H * 0.1, H * 0.3)], fill=B)
+    elif fam == 'aperitif':
+        d.rectangle([0, 0, W, H], outline=B, width=6)
+        d.rectangle([0, H * 0.36, W, H * 0.64], fill=R); rule(H * 0.33, 4, G, 0, 1); rule(H * 0.66, 4, G, 0, 1)
+        d.ellipse([cx - H * 0.11, H * 0.06, cx + H * 0.11, H * 0.28], outline=B, width=6)
+        rule(H * 0.78, 5, G, 0.3, 0.7); rule(H * 0.86, 5, G, 0.38, 0.62)
+    elif fam == 'bitters':
+        d.rectangle([W * 0.3, 14, W * 0.7, H - 15], outline=R, width=8)
+        d.rectangle([W * 0.3 + 18, 32, W * 0.7 - 19, H - 33], outline=G, width=3)
+        for k in range(9):
+            y = H * 0.18 + k * H * 0.07; rule(y, 4, G, 0.36, 0.64 - (k % 3) * 0.03)
+        for x in (0.05, 0.85): d.rectangle([W * x, H * 0.2, W * (x + 0.1), H * 0.8], outline=G, width=3)
+        d.ellipse([cx - W * 0.04, H * 0.03, cx + W * 0.04, H * 0.11], fill=B)
+    elif fam == 'mixer':
+        d.rectangle([0, 0, W, H], fill=R)
+        d.ellipse([W * 0.2, H * 0.1, W * 0.8, H * 0.9], fill=(0, 0, 0, 255), outline=B, width=8)
+        d.ellipse([cx - H * 0.12, cy - H * 0.12, cx + H * 0.12, cy + H * 0.12], outline=R, width=10)
+    else:  # neck labels: a band with a foil rule
+        d.rectangle([0, 0, W, H], fill=R); rule(H * 0.18, H * 0.08, B, 0, 1); rule(H * 0.74, H * 0.08, B, 0, 1)
+        d.ellipse([cx - H * 0.2, cy - H * 0.2, cx + H * 0.2, cy + H * 0.2], fill=(0, 0, 0, 255))
+    im.save(p)
+    return p
+
+
+def label_material(fam, accent, aspect):
+    key = f'label_{fam}_{accent}_{aspect:.2f}'
+    if key in MATS: return MATS[key]
+    m, n, L, b = _nodes(key)
+    tex = n.new('ShaderNodeTexImage'); tex.image = bpy.data.images.load(label_texture(fam, aspect))
+    tex.image.colorspace_settings.name = 'Non-Color'; tex.interpolation = 'Cubic'
+    sep = n.new('ShaderNodeSeparateColor'); L.new(tex.outputs['Color'], sep.inputs[0])
+    fib = _noise(n, L, 140.0, 8, 'UV')                    # paper fibre: a little colour, roughness, bump
+    paper = n.new('ShaderNodeMix'); paper.data_type = 'RGBA'
+    paper.inputs['A'].default_value = srgb('#d6cab0'); paper.inputs['B'].default_value = srgb('#c2b394')
+    L.new(fib.outputs['Fac'], paper.inputs['Factor'])
+    c1 = n.new('ShaderNodeMix'); c1.data_type = 'RGBA'; c1.inputs['B'].default_value = srgb(accent)
+    L.new(sep.outputs['Red'], c1.inputs['Factor']); L.new(paper.outputs['Result'], c1.inputs['A'])
+    c2 = n.new('ShaderNodeMix'); c2.data_type = 'RGBA'; c2.inputs['B'].default_value = srgb('#1c1512')
+    L.new(sep.outputs['Green'], c2.inputs['Factor']); L.new(c1.outputs['Result'], c2.inputs['A'])
+    c3 = n.new('ShaderNodeMix'); c3.data_type = 'RGBA'; c3.inputs['B'].default_value = srgb('#c9a44a')
+    L.new(sep.outputs['Blue'], c3.inputs['Factor']); L.new(c2.outputs['Result'], c3.inputs['A'])
+    L.new(c3.outputs['Result'], b.inputs['Base Color'])
+    L.new(sep.outputs['Blue'], b.inputs['Metallic'])
+    L.new(_maprange(n, L, sep.outputs['Blue'], 0.72, 0.3), b.inputs['Roughness'])
+    add = n.new('ShaderNodeMath'); add.operation = 'MULTIPLY_ADD'; add.inputs[1].default_value = 0.5
+    L.new(sep.outputs['Blue'], add.inputs[0]); L.new(fib.outputs['Fac'], add.inputs[2])
+    bump = n.new('ShaderNodeBump'); bump.inputs['Strength'].default_value = 0.25; bump.inputs['Distance'].default_value = 0.002
+    L.new(add.outputs[0], bump.inputs['Height']); L.new(bump.outputs[0], b.inputs['Normal'])
+    # paper shape (brandy's oval): the texture's alpha cuts the label out
+    tr = n.new('ShaderNodeBsdfTransparent'); mx = n.new('ShaderNodeMixShader')
+    L.new(tex.outputs['Alpha'], mx.inputs['Fac']); L.new(tr.outputs[0], mx.inputs[1]); L.new(b.outputs[0], mx.inputs[2])
+    L.new(mx.outputs[0], n['Material Output'].inputs['Surface'])
+    MATS[key] = m; return m
+
+
+def closure_material(kind, colour):
+    key = f'closure_{kind}_{colour}'
+    if key in MATS: return MATS[key]
+    m, n, L, b = _nodes(key)
+    b.inputs['Base Color'].default_value = srgb(colour)
+    if kind in ('metal', 'foil', 'crown'):
+        b.inputs['Metallic'].default_value = 1.0
+        nz = _noise(n, L, 60.0 if kind != 'foil' else 18.0, 6)
+        L.new(_maprange(n, L, nz.outputs['Fac'], 0.18, 0.34 if kind != 'foil' else 0.45), b.inputs['Roughness'])
+        bump = n.new('ShaderNodeBump'); bump.inputs['Strength'].default_value = 0.08 if kind != 'foil' else 0.35
+        L.new(nz.outputs['Fac'], bump.inputs['Height']); L.new(bump.outputs[0], b.inputs['Normal'])
+    elif kind == 'wood':
+        tc = n.new('ShaderNodeTexCoord'); wv = n.new('ShaderNodeTexWave'); wv.wave_type = 'RINGS'
+        wv.inputs['Scale'].default_value = 6.0; wv.inputs['Distortion'].default_value = 6.0; wv.inputs['Detail'].default_value = 4
+        L.new(tc.outputs['Object'], wv.inputs['Vector'])
+        mx = n.new('ShaderNodeMix'); mx.data_type = 'RGBA'
+        mx.inputs['A'].default_value = srgb(colour); mx.inputs['B'].default_value = srgb(_darker(colour, 0.6))
+        L.new(wv.outputs['Fac'], mx.inputs['Factor']); L.new(mx.outputs['Result'], b.inputs['Base Color'])
+        b.inputs['Roughness'].default_value = 0.42; b.inputs['Coat Weight'].default_value = 0.2
+    elif kind == 'cork':
+        nz = _noise(n, L, 220.0, 3)
+        mx = n.new('ShaderNodeMix'); mx.data_type = 'RGBA'
+        mx.inputs['A'].default_value = srgb('#b48c5c'); mx.inputs['B'].default_value = srgb('#6e5030')
+        L.new(nz.outputs['Fac'], mx.inputs['Factor']); L.new(mx.outputs['Result'], b.inputs['Base Color'])
+        b.inputs['Roughness'].default_value = 0.85
+        bump = n.new('ShaderNodeBump'); bump.inputs['Strength'].default_value = 0.5
+        L.new(nz.outputs['Fac'], bump.inputs['Height']); L.new(bump.outputs[0], b.inputs['Normal'])
+    else:  # plastic
+        b.inputs['Roughness'].default_value = 0.38
+    MATS[key] = m; return m
+
+
+def _accent(style, colour, fam):
+    if style in STYLE_ACCENT: return STYLE_ACCENT[style]
+    c = srgb(colour); lum = 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]
+    return colour if 0.015 < lum < 0.5 else (_darker(colour, 1.6) if lum <= 0.015 else LABEL_ACCENT[fam])
+
+
+_BOTTLE_RIG = {}
+_GLOW_CARDS = []
+
+
+def bottle_rig():
+    """Lights that touch only the bottles (Cycles light linking): a tall window-shaped soft box at front
+    left for the glint, and two narrow strips behind left and right so the glass edges catch light
+    against the dark wall. Created once; each bottle joins the receiver collection."""
+    if _BOTTLE_RIG: return _BOTTLE_RIG['coll']
+    coll = bpy.data.collections.new('bottle_light_rx')
+    base = C + (P(800, 340, 0) - C) * scale_for(SHELF_Y)
+    for name, off, rot, energy, sx, sy, col in (
+            ('bottle_window', (-2.6, -3.2, 1.3), (math.radians(72), 0, math.radians(-38)), 180, 0.55, 1.5, '#ffe2bd'),
+            ('bottle_rim_l', (-1.5, 1.6, 0.25), (math.radians(90), 0, math.radians(-128)), 120, 0.12, 1.6, '#ffd2a0'),
+            ('bottle_rim_r', (1.5, 1.6, 0.25), (math.radians(90), 0, math.radians(128)), 120, 0.12, 1.6, '#ffd2a0')):
+        ld = bpy.data.lights.new(name, 'AREA'); ld.energy = energy; ld.color = srgb(col)[:3]
+        ld.shape = 'RECTANGLE'; ld.size = sx; ld.size_y = sy
+        ob = bpy.data.objects.new(name, ld); link(ob); ob.location = base + Vector(off); ob.rotation_euler = rot
+        ob.visible_camera = False
+        ob.light_linking.receiver_collection = coll
+    _BOTTLE_RIG['coll'] = coll
+    return coll
+
+
+def make_bottle(style, colour, fam, x=800):
+    """One Style's bottle, base centre on the shelf at world (x, 384)."""
+    for gname, cd_ in list(_GLOW_CARDS):   # a removed bottle's glow card goes with it
+        if gname not in bpy.data.objects:
+            bpy.data.objects.remove(cd_, do_unlink=True); _GLOW_CARDS.remove((gname, cd_))
+    keys = STYLE_PROFILE.get(style) or PROFILES.get(fam, PROFILES['vodka']); F = BOTTLE_FORM.get(fam, BOTTLE_FORM['vodka'])
+    s = BOTTLE_SCALE.get(fam, 1.04) * U
+    hk, rk = [h for h, _ in keys], [r for _, r in keys]; r_o = _pchip(hk, rk); top = hk[-1]
+    F = dict(F, **STYLE_FORM.get(style, {})); sq = F['sq']
+    def sqf(h):
+        if not sq: return 0.0
+        q, a, b = sq; return q if h <= a else (0.0 if h >= b else q * (0.5 + 0.5 * math.cos(math.pi * (h - a) / (b - a))))
+    t, base_t, punt = F['wall'], F['base'], F['punt']
+    # the inner wall follows the outside minus the wall, but runs straight down the neck past the lip bead
+    neck_keys = [r for h, r in keys if h > top - 14]
+    def r_i(h):
+        lo = min(r_o(hh) for hh in (h - 3, h - 1.5, h, h + 1.5, h + 3)); return max(lo - t, 1.2)
+    S = lambda pts: [(h * s, r * s) for h, r in pts]
+    R0 = rk[0]
+    bottom = [(punt, 0.0), (punt * 0.96, R0 * 0.18), (punt * 0.8, R0 * 0.38), (punt * 0.45, R0 * 0.6), (0.12, R0 * 0.8)]
+    outer = [(h, r_o(h)) for h in _heights(0, top, hk)]
+    inner = [(h, r_i(h)) for h in reversed(_heights(base_t, top, hk))]
+    glass_path = bottom + outer + inner + [(base_t, 0.0)]
+    gl = _revolve('bottle_' + style, S(glass_path), glass_material(STYLE_GLASS.get(style, F['glass'])), sqf)
+    parts = [gl]
+    # liquid: inside the inner wall with a small gap, a flat top with a meniscus at the wall
+    g = 0.25; hf = F['fill']; hb = base_t + 0.2
+    liq = [(hb, 0.0)] + [(h, r_i(h) - g) for h in _heights(hb, hf, hk)] + [(hf + 0.45, r_i(hf) - g - 0.05),
+                                                                              (hf + 0.1, r_i(hf) - g - 0.9), (hf, 0.0)]
+    d_ref = 2 * (r_i(hf * 0.5) - g) * s * scale_for(SHELF_Y)
+    parts.append(_revolve('liquid_' + style, S(liq), liquid_material(colour, d_ref), sqf))
+    # paper labels, on the glass: 0.35 units (about 1 mm) proud of the outer surface at every height
+    accent = _accent(style, colour, fam)
+    for kind, h0, h1, half in LABEL_BAND.get(fam, []):
+        a0, a1 = -math.pi / 2 - math.radians(half), -math.pi / 2 + math.radians(half)
+        hs = _heights(h0, h1, hk, 0.5)
+        if kind == 'wrap':   # a straight paper tube: stands off the shoulder like Angostura's
+            rr = max(r_o(h) for h in hs) + 0.4; path = [(h, rr) for h in hs]; a0, a1 = math.pi / 2, 2.5 * math.pi
+        else:
+            path = [(h, r_o(h) + 0.35) for h in hs]
+        hm = (h0 + h1) / 2; rm = path[len(path) // 2][1]; qm = sqf(hm)   # true width of the paper at mid height
+        pts = [_sq_dir(a0 + (a1 - a0) * i / 32, qm) for i in range(33)]
+        aspect = sum(math.dist(u_, v_) for u_, v_ in zip(pts, pts[1:])) * rm / (h1 - h0)
+        lf = fam if kind != 'neck' else 'neck'
+        if kind == 'front' and style in STYLE_LAYOUT: lf = STYLE_LAYOUT[style]
+        lb = _revolve(f'label_{kind}_' + style, S(path), label_material(lf, accent, aspect), sqf,
+                      segs=48, a0=a0, a1=a1 if kind != 'wrap' else a1 - 1e-4, uv=(h0 * s, h1 * s))
+        parts.append(lb)
+    # closures
+    lip = r_o(top - 1.6)
+    if fam in ('whisky', 'brandy', 'rum', 'tequila'):
+        wood = STYLE_WOOD.get(style) or {'whisky': '#4a2c18', 'brandy': '#3a1f12', 'rum': '#161210', 'tequila': '#8a6038'}[fam]
+        th = {'whisky': 5.5, 'brandy': 6.5, 'rum': 5.0, 'tequila': 9.0}[fam]; wr = lip + {'tequila': 0.6}.get(fam, 1.4)
+        parts.append(_revolve('cork_' + style, S([(top - 0.2, 0), (top - 0.2, lip - 1.2), (top + 1.2, lip - 1.0), (top + 1.2, 0)]),
+                              closure_material('cork', '#b48c5c'), lambda h: 0.0, 40))
+        bt = top + 1.0
+        if fam == 'tequila':   # a tall turned stopper
+            prof = [(bt, 0), (bt, wr * 0.92), (bt + 0.5, wr), (bt + th * 0.6, wr * 0.86), (bt + th * 0.85, wr * 1.05),
+                    (bt + th - 0.5, wr * 0.8), (bt + th, 0)]
+        elif fam == 'brandy':  # a mushroom top
+            prof = [(bt, 0), (bt, wr * 0.9), (bt + 0.6, wr), (bt + th * 0.55, wr * 1.04), (bt + th * 0.85, wr * 0.86),
+                    (bt + th, wr * 0.4), (bt + th, 0)]
+        else:
+            prof = [(bt, 0), (bt, wr * 0.94), (bt + 0.5, wr), (bt + th - 0.7, wr), (bt + th, wr * 0.9), (bt + th, 0)]
+        parts.append(_revolve('stopper_' + style, S(prof), closure_material('wood', wood), lambda h: 0.0, 48))
+    elif fam in ('gin', 'vodka'):   # aluminium screw cap with knurling and a perforation ring
+        cr = lip + 0.7; h0 = top - 4.2; h1 = top + 6.5
+        capcol = {'gin': _darker(accent, 1.0), 'vodka': '#b8b8b4'}[fam] if style != 'triple sec' else '#c8611c'
+        path = [(h0, cr - 0.2), (h0 + 0.3, cr), (h0 + 2.2, cr), (h0 + 2.4, cr - 0.25), (h0 + 2.7, cr - 0.25), (h0 + 2.9, cr),
+                (h1 - 0.6, cr), (h1, cr - 0.6), (h1, 0)]
+        cap = _revolve('cap_' + style, S(path), closure_material('metal', capcol), lambda h: 0.0, 96)
+        for v in cap.data.vertices:   # knurl: fine vertical ridges above the ring
+            hh = v.co.z / s
+            if h0 + 3.2 < hh < h1 - 0.8:
+                a = math.atan2(v.co.y, v.co.x); k = 1 + 0.025 * math.cos(48 * a)
+                v.co.x *= k; v.co.y *= k
+        parts.append(cap)
+    elif fam == 'aperitif':   # foil capsule over the neck and lip
+        h0 = top - 18; hs = _heights(h0, top, hk, 0.4)
+        path = [(h0, r_o(h0) + 0.25)] + [(h, r_o(h) + 0.3) for h in hs] + [(top + 0.4, lip * 0.9), (top + 0.45, 0)]
+        foil = {'campari': '#8a1418', 'sweet vermouth': '#3a1a14', 'aperol': '#c8642a', 'amaro nonino': '#b8964a',
+                'dry vermouth': '#c9b27a', 'ginger wine': '#2a4a32'}.get(style, '#b8964a')
+        parts.append(_revolve('foil_' + style, S(path), closure_material('foil', foil), lambda h: 0.0, 64))
+    elif fam == 'bitters':    # plastic dasher cap: a collar, a dome, a small spout
+        cr = lip + 0.8; h0 = top - 4; capcol = {'angostura bitters': '#d6a630'}.get(style, '#2a1c16')
+        path = [(h0, cr - 0.2), (h0 + 0.3, cr), (top + 3, cr), (top + 4.5, cr * 0.85), (top + 5.6, cr * 0.45),
+                (top + 6, 1.5), (top + 8.5, 1.1), (top + 8.8, 0)]
+        parts.append(_revolve('dasher_' + style, S(path), closure_material('plastic', capcol), lambda h: 0.0, 48))
+    elif fam == 'mixer':      # crown cap with a crimped skirt
+        cr = lip + 0.6; h0 = top - 2.2
+        capcol = {'tonic water': '#c4a44e', 'soda water': '#b8bcc0', 'ginger ale': '#4a7a4a', 'ginger beer': '#8a4a1c'}.get(style, '#b8bcc0')
+        path = [(h0, cr + 0.5), (h0 + 0.4, cr + 0.6), (top + 0.6, cr + 0.1), (top + 1.2, cr - 0.3), (top + 1.3, 0)]
+        cap = _revolve('crown_' + style, S(path), closure_material('crown', capcol), lambda h: 0.0, 84)
+        for v in cap.data.vertices:
+            hh = v.co.z / s
+            if hh < top + 0.7:
+                a = math.atan2(v.co.y, v.co.x); k = 1 + 0.06 * max(0, math.cos(21 * a)) * (top + 0.7 - hh) / 2.9
+                v.co.x *= k; v.co.y *= k
+        parts.append(cap)
+    # a little turn so the labels are not all square to the camera
+    turn = math.radians(((sum(map(ord, style)) * 37) % 13 - 6) * 0.9)
+    coll = bottle_rig()
+    for p in parts:
+        p.location = P(x, 384, 0); p.rotation_euler = (0, 0, turn)
+        push(p, SHELF_Y); coll.objects.link(p)
+    # behind the liquid only, an emitting card that is seen through the glass and nothing else: the
+    # backlight a lit back bar gives, so the liquid shows its colour on the dark wall
+    c = srgb(colour); lum = 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]
+    cw, ch = r_o(hf * 0.5) * 2.6 * s, (hf - 4.5 - base_t) * s
+    card = mesh_obj('glow_' + style, [(-cw / 2, 0, 0), (cw / 2, 0, 0), (cw / 2, 0, ch), (-cw / 2, 0, ch)], [(0, 1, 2, 3)],
+                    glow_material(0.2 + 1.15 * (1 - min(lum / 0.6, 1)) ** 1.5))
+    card.location = P(x, 384, 0) + Vector((0, r_o(hf * 0.5) * s * 1.7, base_t * s))
+    for a in ('visible_camera', 'visible_diffuse', 'visible_glossy', 'visible_shadow', 'visible_volume_scatter'):
+        setattr(card, a, False)
+    push(card, SHELF_Y)
+    _GLOW_CARDS.append((gl.name, card))   # not in parts: set_visible would show it to the camera
+    return parts
+
+
+def glow_material(strength):
+    key = f'bottle_glow_{strength:.2f}'
+    if key in MATS: return MATS[key]
+    m = bpy.data.materials.new(key); m.use_nodes = True; n = m.node_tree.nodes; L = m.node_tree.links
+    n.remove(n['Principled BSDF']); em = n.new('ShaderNodeEmission'); em.inputs['Color'].default_value = srgb('#ffe6c4')
+    em.inputs['Strength'].default_value = strength
+    L.new(em.outputs[0], n['Material Output'].inputs['Surface'])
+    MATS[key] = m; return m
 
 
 def read_styles():
@@ -547,26 +1006,6 @@ def read_styles():
         if kind in ('spirit', 'wine', 'liqueur', 'bitters', 'mixer'):
             out.append((k, label, colour, shape))
     return out
-
-
-def make_bottle(style, colour, fam, x=800):
-    prof = PROFILES.get(fam, PROFILES['vodka']); s = BOTTLE_SCALE.get(fam, 1.04) * U
-    body = lathe('bottle_' + style, [((96 - y) * s, r * s) for y, r in prof],
-                 mat('btl_' + colour, colour, 0.32, coat=0.25, spec=0.35), 40)
-    parts = [body]
-    for (ya, yb_, col) in LABEL_BAND.get(fam, []):
-        rmax = max(r for y, r in prof if ya <= y <= yb_ or True) * s
-        r_at = lambda yy: next((r for y, r in prof if y <= yy), prof[-1][1])
-        rr = min(r_at(ya), r_at(yb_)) * s + 0.004
-        lb = lathe('label', [((96 - yb_) * s, rr), ((96 - ya) * s, rr)], mat('lbl_' + col, col, 0.7), 40)
-        parts.append(lb)
-    cap_y = min(y for y, r in prof); cap_r = [r for y, r in prof if y <= cap_y + 1][-1] if False else prof[-2][1]
-    cap = lathe('cap', [((96 - cap_y - 2) * s, (cap_r + 1.2) * s), ((96 - cap_y + 8) * s, (cap_r + 1.2) * s)], mat('cap', '#1c1410', 0.4), 24)
-    parts.append(cap)
-    for p in parts:
-        p.location = P(x, 384, 0)
-        push(p, SHELF_Y)
-    return parts
 
 
 # ---------------------------------------------------------------- lights
@@ -779,7 +1218,7 @@ if ONLY in ('all', 'bottles'):
     for i, (key, label, colour, fam) in enumerate(styles):
         parts = make_bottle(key, colour, fam)
         reg = bbox_world(parts, 6)
-        png = render_region('b_' + key.replace(' ', '_'), reg, 2.6, parts, True, 32)
+        png = render_region('b_' + key.replace(' ', '_'), reg, 2.6, parts, True, BOTTLE_SPP)
         info = crop_alpha(png, reg, 2.6, 'bottle-' + key.replace(' ', '-'), 84)
         info['ax'], info['ay'] = 800, 384          # anchor: base centre, on the shelf
         info['family'] = fam
