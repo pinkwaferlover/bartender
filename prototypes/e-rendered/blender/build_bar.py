@@ -1420,15 +1420,25 @@ def label_material(fam, accent, aspect):
     sep = n.new('ShaderNodeSeparateColor'); L.new(tex.outputs['Color'], sep.inputs[0])
     fib = _noise(n, L, 140.0, 8, 'UV')                    # paper fibre: a little colour, roughness, bump
     paper = n.new('ShaderNodeMix'); paper.data_type = 'RGBA'
-    paper.inputs['A'].default_value = srgb('#d6cab0'); paper.inputs['B'].default_value = srgb('#c2b394')
+    paper.inputs['A'].default_value = srgb('#b39c74'); paper.inputs['B'].default_value = srgb('#a08a64')
     L.new(fib.outputs['Fac'], paper.inputs['Factor'])
+    # the paper wraps a curved body: it darkens as it turns away from the eye (and a touch toward its sides)
+    lw = n.new('ShaderNodeLayerWeight'); lw.inputs['Blend'].default_value = 0.5
+    fall = n.new('ShaderNodeMapRange'); fall.inputs['From Min'].default_value = 0.0; fall.inputs['From Max'].default_value = 0.7
+    fall.inputs['To Min'].default_value = 1.0; fall.inputs['To Max'].default_value = 0.35
+    L.new(lw.outputs['Facing'], fall.inputs['Value'])
+    shade = n.new('ShaderNodeMix'); shade.data_type = 'RGBA'; shade.blend_type = 'MULTIPLY'
+    shade.inputs['Factor'].default_value = 1.0
     c1 = n.new('ShaderNodeMix'); c1.data_type = 'RGBA'; c1.inputs['B'].default_value = srgb(accent)
     L.new(sep.outputs['Red'], c1.inputs['Factor']); L.new(paper.outputs['Result'], c1.inputs['A'])
     c2 = n.new('ShaderNodeMix'); c2.data_type = 'RGBA'; c2.inputs['B'].default_value = srgb('#1c1512')
     L.new(sep.outputs['Green'], c2.inputs['Factor']); L.new(c1.outputs['Result'], c2.inputs['A'])
     c3 = n.new('ShaderNodeMix'); c3.data_type = 'RGBA'; c3.inputs['B'].default_value = srgb('#c9a44a')
     L.new(sep.outputs['Blue'], c3.inputs['Factor']); L.new(c2.outputs['Result'], c3.inputs['A'])
-    L.new(c3.outputs['Result'], b.inputs['Base Color'])
+    L.new(c3.outputs['Result'], shade.inputs['A'])
+    cmb = n.new('ShaderNodeCombineColor')
+    for ch in ('Red', 'Green', 'Blue'): L.new(fall.outputs['Result'], cmb.inputs[ch])
+    L.new(cmb.outputs[0], shade.inputs['B']); L.new(shade.outputs['Result'], b.inputs['Base Color'])
     L.new(sep.outputs['Blue'], b.inputs['Metallic'])
     L.new(_maprange(n, L, sep.outputs['Blue'], 0.72, 0.3), b.inputs['Roughness'])
     add = n.new('ShaderNodeMath'); add.operation = 'MULTIPLY_ADD'; add.inputs[1].default_value = 0.5
@@ -1481,6 +1491,7 @@ def _accent(style, colour, fam):
 
 
 _BOTTLE_RIG = {}
+WHISKY_TURN = {'bourbon': -11, 'rye': 6, 'blended scotch': -4, 'islay scotch': 13, 'irish whiskey': -8}   # degrees, so no two are clones
 _GLOW_CARDS = []
 
 
@@ -1493,8 +1504,8 @@ def bottle_rig():
     base = C + (P(800, 340, 0) - C) * scale_for(SHELF_Y)
     for name, off, rot, energy, sx, sy, col in (
             ('bottle_window', (-2.6, -3.2, 1.3), (math.radians(72), 0, math.radians(-38)), 180, 0.55, 1.5, '#ffe2bd'),
-            ('bottle_rim_l', (-1.5, 1.6, 0.25), (math.radians(90), 0, math.radians(-128)), 120, 0.12, 1.6, '#ffd2a0'),
-            ('bottle_rim_r', (1.5, 1.6, 0.25), (math.radians(90), 0, math.radians(128)), 120, 0.12, 1.6, '#ffd2a0')):
+            ('bottle_rim_l', (-1.5, 1.6, 0.25), (math.radians(90), 0, math.radians(-128)), 60, 0.07, 1.6, '#ffd2a0'),
+            ('bottle_rim_r', (1.5, 1.6, 0.25), (math.radians(90), 0, math.radians(128)), 60, 0.07, 1.6, '#ffd2a0')):
         ld = bpy.data.lights.new(name, 'AREA'); ld.energy = energy; ld.color = srgb(col)[:3]
         ld.shape = 'RECTANGLE'; ld.size = sx; ld.size_y = sy
         ob = bpy.data.objects.new(name, ld); link(ob); ob.location = base + Vector(off); ob.rotation_euler = rot
@@ -1604,7 +1615,7 @@ def make_bottle(style, colour, fam, x=800):
                 v.co.x *= k; v.co.y *= k
         parts.append(cap)
     # a little turn so the labels are not all square to the camera
-    turn = math.radians(((sum(map(ord, style)) * 37) % 13 - 6) * 0.9)
+    turn = math.radians(WHISKY_TURN.get(style, ((sum(map(ord, style)) * 37) % 13 - 6) * 0.9))
     coll = bottle_rig()
     for p in parts:
         p.location = P(x, 384, 0); p.rotation_euler = (0, 0, turn)
@@ -1614,7 +1625,7 @@ def make_bottle(style, colour, fam, x=800):
     c = srgb(colour); lum = 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]
     cw, ch = r_o(hf * 0.5) * 2.6 * s, (hf - 4.5 - base_t) * s
     card = mesh_obj('glow_' + style, [(-cw / 2, 0, 0), (cw / 2, 0, 0), (cw / 2, 0, ch), (-cw / 2, 0, ch)], [(0, 1, 2, 3)],
-                    glow_material(0.2 + 1.15 * (1 - min(lum / 0.6, 1)) ** 1.5))
+                    glow_material(0.2 + 1.15 * (1 - min(lum / 0.6, 1)) ** 1.5 + 0.4 * min(lum / 0.6, 1) ** 3))
     card.location = P(x, 384, 0) + Vector((0, r_o(hf * 0.5) * s * 1.7, base_t * s))
     for a in ('visible_camera', 'visible_diffuse', 'visible_glossy', 'visible_shadow', 'visible_volume_scatter'):
         setattr(card, a, False)
@@ -1849,7 +1860,16 @@ if ONLY in ('all', 'touch'):
         png = render_region('t_' + name, reg, K[name], parts, True, 64)
         MAN['touch'][name] = crop_alpha(png, reg, K[name], 'touch-' + name)
 
+def bottle_neon(on):
+    """While the bottles render, the neon letters and the neon's wash light are hidden from glossy rays, so
+    the sign no longer smears a mottled pink reflection over every shoulder (the wash still tints them a
+    little through diffuse). Restored afterwards, so the backgrounds and other layers are unchanged."""
+    for o in (neon, NEON_WASH): o.visible_glossy = not on
+    neon.visible_transmission = not on   # it is also seen in the glass by the rays that go through it
+
+
 if ONLY in ('all', 'bottles'):
+    bottle_neon(True)
     styles = read_styles()
     for i, (key, label, colour, fam) in enumerate(styles):
         parts = make_bottle(key, colour, fam)
@@ -1861,6 +1881,7 @@ if ONLY in ('all', 'bottles'):
         MAN['bottles'][key] = info
         for p in parts:
             bpy.data.objects.remove(p, do_unlink=True)
+    bottle_neon(False)
 
 if ONLY == 'preview':
     # Look at it large, alone and in the bar, before it ships. Nothing here is written to img/ or layers.js.
@@ -1875,6 +1896,7 @@ if ONLY == 'preview':
         for i, (key, label, colour, fam) in enumerate(styles):
             parts += make_bottle(key, colour, fam, 800 - step * (n - 1) / 2 + i * step)
         ALL_TOUCH = parts
+        bottle_neon(True)
     else:
         parts = T[ITEM]
     reg = bbox_world(parts, 10)
