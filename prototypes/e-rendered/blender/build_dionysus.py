@@ -88,7 +88,7 @@ def sheets_from_frames():
                 faces = []
                 for i in pick:
                     hx0 = (head[0] - 30 - rect[0]) * kk; hy0 = (head[1] - 10 - rect[1]) * kk
-                    box = (int(hx0), int(hy0), int(hx0 + (head[2] + 60) * kk), int(hy0 + (head[3] * 0.8 + 10) * kk))
+                    box = (int(hx0), int(hy0), int(hx0 + (head[2] + 60) * kk), int(hy0 + (head[3] * 1.2 + 10) * kk))
                     bg = Image.new('RGBA', ims[i].size, (52, 40, 34, 255)); bg.alpha_composite(ims[i])
                     faces.append(bg.crop(box).convert('RGB'))
                 fw = sum(f.width for f in faces); fh = faces[0].height
@@ -102,8 +102,26 @@ def sheets_from_frames():
     print('[sheets] written to', SHOTS)
 
 
+QUALITY = int(_arg('--q', '42')); ALPHA_Q = int(_arg('--aq', '10'))   # webp: the silhouette's alpha is ~40% of the bytes
+
+
+def reencode():
+    """Rewrite every finish's frames from the lossless renders kept in blender/_work (no re-render)."""
+    from PIL import Image
+    work = os.path.join(HERE, '_work'); n = 0
+    for fin in FINISHES:
+        for d in sorted(os.listdir(os.path.join(DIO, fin))):
+            for f in sorted(os.listdir(os.path.join(DIO, fin, d))):
+                src = os.path.join(work, f'dio_{fin}_{d}_{int(f[:4]) - 1:02d}.png')
+                Image.open(src).convert('RGBA').save(os.path.join(DIO, fin, d, f), 'WEBP', quality=QUALITY, method=6, alpha_quality=ALPHA_Q); n += 1
+    man = json.load(open(MAN_P)); man['render']['webp'] = {'quality': QUALITY, 'alphaQuality': ALPHA_Q, 'method': 6}
+    json.dump(man, open(MAN_P, 'w'), indent=1); print('[reencode]', n, 'frames')
+
+
 if SHEETS_ONLY:
     sheets_from_frames(); sys.exit(0)
+if '--reencode' in ARGS:
+    reencode(); sys.exit(0)
 
 # ---------------------------------------------------------------- the bar's scene, camera and lights
 src = open(os.path.join(HERE, 'build_bar.py'), encoding='utf8').read()
@@ -1517,7 +1535,6 @@ LOOPS = {
 RECT = (560, 290, 1040, 640)     # world rect of every frame (the counter clips him below ~630 in the app)
 K = float(_arg('--k', '1.2'))    # pixels per world unit
 SAMPLES = int(_arg('--samples', '16'))
-QUALITY = int(_arg('--q', '50'))
 
 
 def props_for(kinds):
@@ -1577,7 +1594,7 @@ def render_loop(name):
         if PREVIEW:
             bg = Image.new('RGBA', im.size, (40, 30, 26, 255)); bg.alpha_composite(im)
             bg.save(os.path.join(WORK, f'preview_{name}_{FINISH}.png')); continue
-        im.save(os.path.join(OUT, name, f'{f + 1:04d}.webp'), 'WEBP', quality=QUALITY, method=6, alpha_quality=60)
+        im.save(os.path.join(OUT, name, f'{f + 1:04d}.webp'), 'WEBP', quality=QUALITY, method=6, alpha_quality=ALPHA_Q)
     rel = os.path.relpath(OUT, PROTO).replace(os.sep, '/')
     return {'frames': [f'{rel}/{name}/{f + 1:04d}.webp' for f in range(nf)], 'fps': fps, 'hold': hold,
             'secondsPerFrame': round(sum(times) / len(times), 1)}
@@ -1647,7 +1664,7 @@ if __name__ == 'build_dionysus' or True:
             man['head'] = head_rect()
             man['about'] = ABOUT
             man['render'] = {'engine': 'Cycles (CPU, 4 threads)', 'samples': SAMPLES, 'adaptiveThreshold': 0.02,
-                             'denoiser': 'OpenImageDenoise', 'pxPerWorldUnit': K, 'webp': {'quality': QUALITY, 'alphaQuality': 60, 'method': 6}}
+                             'denoiser': 'OpenImageDenoise', 'pxPerWorldUnit': K, 'webp': {'quality': QUALITY, 'alphaQuality': ALPHA_Q, 'method': 6}}
             man.pop('finish', None)
             out = {k_: man[k_] for k_ in ('rect', 'head', 'about', 'render', 'loops', 'finishes') if k_ in man}
             json.dump(out, open(MAN_P, 'w'), indent=1)
