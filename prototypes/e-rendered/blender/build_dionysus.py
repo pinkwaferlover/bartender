@@ -1,5 +1,6 @@
-"""Dionysus for prototype E (R3, R4, R13): a MakeHuman (MPFB2) base shaped towards the Louvre "Richelieu"
-Dionysus, in painted marble, rigged, and rendered as one loop per action (polish, stir, pour, shake, reach, story).
+"""Dionysus for prototype E (R3, R4, R8, R13): a MakeHuman (MPFB2) base shaped towards the Louvre "Richelieu"
+Dionysus, rigged, in three finishes (Q8), and rendered as one loop per action (polish, stir, pour, shake, reach,
+story, dip).
 
 Needs MPFB2 installed as a Blender extension (user_default repository):
     git clone --depth 1 https://github.com/makehumancommunity/mpfb2
@@ -9,22 +10,27 @@ Run from the repository root:
     .venv-blender/bin/python prototypes/e-rendered/blender/build_dionysus.py             # all loops
     .venv-blender/bin/python prototypes/e-rendered/blender/build_dionysus.py --only stir # one loop
 Options:
-    --finish painted|white|living   Q8 finish (default painted). Loops for white/living go to img/dio-<finish>/
-                                    and dio-loops-<finish>.json; previews to _work/preview_<loop>_<finish>.png.
-    --still <loop> [--frame N] [--crop full|head|grip] [--scale k] [--out DIR]
+    --finish painted|white|living   Q8 finish (default painted). Frames go to img/dio/<finish>/<loop>/NNNN.webp;
+                                    all finishes share one manifest, dio-loops.json (painted is its `loops`, the
+                                    others are under `finishes`).
+    --still <loop> [--frame N] [--crop full|head|grip|left] [--scale k] [--out DIR]
                                     one frame for inspection (default: middle frame, full rect, scale 1), written
-                                    to DIR/still_<finish>_<loop>_<NN>_<crop>.png (default DIR: blender/_work);
-                                    head and grip are close-ups around his head and right fist.
+                                    to DIR/still_<finish>_<loop>_<NN>_<crop>.png (default DIR: blender/_work).
+    --stills loop:frame:crop:scale,...   several stills in one run (same naming)
+    --sheet loop,loop,...           every frame of each loop at --scale (default 0.4) with few samples, tiled
+                                    into DIR/sheet_<finish>_<loop>.jpg: a check for snapping and clipping.
+    --sheets-from-frames            no rendering: contact sheets and face crops from the frames in img/dio/ into
+                                    shots/dio/ (run after a full render of every finish).
 
 It reuses build_bar.py's scene, camera and lights (without writing any of build_bar's outputs), so his
 light matches the bar, and renders him alone on a transparent film in one fixed world rectangle, which
-dio-layer.js places in B's world units. It writes img/dio/<loop>/NNNN.webp and dio-loops.json.
-No MakeHuman system assets are needed: a marble statue's eyes, hair, wreath and drapery are modelled here.
+dio-layer.js places in B's world units. No MakeHuman system assets are needed: the statue's eyes, hair,
+wreath, drapery and props are modelled here.
 """
-import bpy, bmesh, math, os, sys, json, time, importlib, addon_utils
+import bpy, bmesh, math, os, sys, json, time, importlib, addon_utils, shutil
 from mathutils.bvhtree import BVHTree
 import numpy as np
-from mathutils import Vector, Matrix, Euler
+from mathutils import Vector, Matrix, Euler, Quaternion
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 PROTO = os.path.dirname(HERE)
@@ -39,9 +45,64 @@ FINISH = _arg('--finish', 'painted')       # Q8: painted (default) | white | liv
 assert FINISH in ('painted', 'white', 'living'), FINISH
 STILL = _arg('--still')                    # one loop's frame only, for inspection (written to --out, not img/)
 STILL_FRAME = _arg('--frame')              # default: the loop's middle frame
-STILL_SCALE = float(_arg('--scale', '1'))  # pixels per world unit, as a multiple of K
-STILL_CROP = _arg('--crop', 'full')        # full | head | grip (a close-up around his head or right fist)
+STILL_SCALE = float(_arg('--scale', '0.4' if '--sheet' in ARGS else '1'))
+STILL_CROP = _arg('--crop', 'full')        # full | head | grip | left (close-ups around his head or a fist)
 STILL_OUT = _arg('--out')                  # folder for --still images (default: build_bar's _work folder)
+STILLS = _arg('--stills')
+SHEET = _arg('--sheet')
+SHEETS_ONLY = '--sheets-from-frames' in ARGS
+DEBUG = '--debug' in ARGS
+FRAMES_ARG = _arg('--frames')              # a full render of only these frame numbers (comma list), for re-renders
+
+DIO = os.path.join(PROTO, 'img', 'dio')
+SHOTS = os.path.join(PROTO, 'shots', 'dio')
+MAN_P = os.path.join(PROTO, 'dio-loops.json')
+FINISHES = ('painted', 'white', 'living')
+LOOP_NAMES = ('polish', 'stir', 'pour', 'shake', 'reach', 'story', 'dip')
+
+
+# ---------------------------------------------------------------- contact sheets from rendered frames (no Blender)
+def sheets_from_frames():
+    from PIL import Image, ImageDraw
+    man = json.load(open(MAN_P)); os.makedirs(SHOTS, exist_ok=True)
+    rect = man['rect']; head = man['head']
+    for fin in FINISHES:
+        loops = man['loops'] if fin == 'painted' else man['finishes'][fin]['loops']
+        for name, L in loops.items():
+            ims = [Image.open(os.path.join(PROTO, f)).convert('RGBA') for f in L['frames']]
+            k = 0.42; w, h = int(ims[0].width * k), int(ims[0].height * k)
+            cols = min(len(ims), 6); rows = (len(ims) + cols - 1) // cols
+            sh = Image.new('RGB', (cols * w, rows * h + 24), (24, 20, 22)); d = ImageDraw.Draw(sh)
+            d.text((6, 5), f'{fin} / {name}: {len(ims)} frames at {L["fps"]} fps, hold from frame {L["hold"]}', fill=(240, 231, 216))
+            for i, im in enumerate(ims):
+                bg = Image.new('RGBA', im.size, (52, 40, 34, 255)); bg.alpha_composite(im)
+                x, y = (i % cols) * w, 24 + (i // cols) * h
+                sh.paste(bg.convert('RGB').resize((w, h), Image.LANCZOS), (x, y))
+                d.text((x + 4, y + 3), str(i) + (' hold' if L['hold'] and i >= L['hold'] else ''), fill=(240, 200, 120))
+            sh.save(os.path.join(SHOTS, f'{fin}-{name}.jpg'), quality=72, optimize=True)
+            if fin == 'painted' or name == 'polish':
+                # the face, from the frame where he is most expressive (the hold, or the last third of a cycle)
+                kk = ims[0].width / rect[2]
+                pick = sorted(set([0, L['hold'] or len(ims) * 2 // 3, len(ims) - 2]))
+                faces = []
+                for i in pick:
+                    hx0 = (head[0] - 30 - rect[0]) * kk; hy0 = (head[1] - 10 - rect[1]) * kk
+                    box = (int(hx0), int(hy0), int(hx0 + (head[2] + 60) * kk), int(hy0 + (head[3] * 0.8 + 10) * kk))
+                    bg = Image.new('RGBA', ims[i].size, (52, 40, 34, 255)); bg.alpha_composite(ims[i])
+                    faces.append(bg.crop(box).convert('RGB'))
+                fw = sum(f.width for f in faces); fh = faces[0].height
+                fs = Image.new('RGB', (fw, fh + 20), (24, 20, 22)); dd = ImageDraw.Draw(fs); x = 0
+                for i, f in zip(pick, faces):
+                    fs.paste(f, (x, 20)); dd.text((x + 4, 4), f'{fin} {name} frame {i}', fill=(240, 231, 216)); x += f.width
+                fs = fs.resize((fs.width * 2, fs.height * 2), Image.LANCZOS)
+                nm = f'face-{name}.jpg' if fin == 'painted' else f'face-{name}-{fin}.jpg'
+                fs.save(os.path.join(SHOTS, nm), quality=80, optimize=True)
+                if name == 'polish' and fin == 'painted': shutil.copy(os.path.join(SHOTS, nm), os.path.join(SHOTS, 'face-polish-painted.jpg'))
+    print('[sheets] written to', SHOTS)
+
+
+if SHEETS_ONLY:
+    sheets_from_frames(); sys.exit(0)
 
 # ---------------------------------------------------------------- the bar's scene, camera and lights
 src = open(os.path.join(HERE, 'build_bar.py'), encoding='utf8').read()
@@ -51,8 +112,16 @@ G = {'__file__': os.path.join(HERE, 'build_bar.py'), '__name__': 'build_bar'}
 exec(compile(src, 'build_bar.py', 'exec'), G)
 scene, cam, P, push, render_region, bbox_world = G['scene'], G['cam'], G['P'], G['push'], G['render_region'], G['bbox_world']
 srgb, smooth, mat, link, lathe, WORK = G['srgb'], G['smooth'], G['mat'], G['link'], G['lathe'], G['WORK']
+CAM_C, DIST = G['C'], G['DIST']
 r = scene.render; cy = scene.cycles
-OUT = os.path.join(PROTO, 'img', 'dio' if FINISH == 'painted' else 'dio-' + FINISH)
+OUT = os.path.join(DIO, FINISH)
+
+
+def S2W(x, y, d):
+    """The Blender point at depth d (Blender units in front of (-) or behind (+) the reference plane) that the
+    camera sees at world (x, y): where to put something so it appears at (x, y) in B's world units."""
+    return CAM_C + (P(x, y, 0) - CAM_C) * ((DIST + d) / DIST)
+
 
 # ---------------------------------------------------------------- MPFB
 addon_utils.enable('bl_ext.user_default.mpfb', default_set=True)
@@ -79,19 +148,16 @@ verts_rest = np.array([v.co[:] for v in body.data.vertices])
 top_z, bot_z = verts_rest[:, 2].max(), verts_rest[:, 2].min()
 S = (H_WORLD * 0.01) / (top_z - bot_z)
 rig.scale = (S, S, S)
-rig.location = P(800, HEAD_TOP_Y + H_WORLD, 0) - Vector((0, 0, bot_z * S)) + Vector((0, 0, 0))
+rig.location = P(800, HEAD_TOP_Y + H_WORLD, 0) - Vector((0, 0, bot_z * S))
 bpy.context.view_layer.update()
 
 
-def W(p):  # rig-space point -> world
-    return rig.matrix_world @ Vector(p)
-
-
 # ---------------------------------------------------------------- materials, per finish (Q8)
-# painted: painted marble (the default): marble skin with painted lips, cheeks and irises, painted hair-free
-#          attributes (red himation with a green and gold hem, green ivy, purple grapes).
-# white:   unpainted white marble: skin, eyes (blank), hair, wreath and drapery all marble. Props as they are.
-# living:  a living young man: warm skin with subsurface scattering, dark brown hair, real eyes, brows,
+# painted: painted marble (the default): a warm flesh wash over the marble, painted lips, cheeks and irises,
+#          red-brown painted hair; red himation with a green and gold hem, green ivy, purple grapes.
+# white:   unpainted white marble, cool and pale: skin, eyes (blank), hair, wreath, drapery and the thyrsus
+#          all marble, the drape a step darker with shaded folds. Other props as they are.
+# living:  a living young man: skin with subsurface scattering, dark brown hair, real eyes and brows,
 #          the red himation with its hem, green ivy, purple grapes.
 def _node_mix(n, L, fac, a, b_):
     m_ = n.new('ShaderNodeMix'); m_.data_type = 'RGBA'
@@ -102,15 +168,28 @@ def _node_mix(n, L, fac, a, b_):
     return m_.outputs['Result']
 
 
-def marble_material(name='marble', paint=True, lo='#b9b3ab', hi='#efe8de', rough=0.38, hem=False):
+def _ao(n, L, col_, strength, dist):
+    """Darken creases and cavities (Cycles ambient occlusion): carved marble reads by its shadows."""
+    ao = n.new('ShaderNodeAmbientOcclusion'); ao.samples = 8; ao.inputs['Distance'].default_value = dist
+    mr = n.new('ShaderNodeMapRange'); mr.inputs['To Min'].default_value = 1 - strength
+    L.new(ao.outputs['AO'], mr.inputs['Value'])
+    mm = n.new('ShaderNodeMix'); mm.data_type = 'RGBA'; mm.blend_type = 'MULTIPLY'; mm.inputs['Factor'].default_value = 1.0
+    L.new(col_, mm.inputs['A']); cc = n.new('ShaderNodeCombineColor')
+    for k in ('Red', 'Green', 'Blue'): L.new(mr.outputs['Result'], cc.inputs[k])
+    L.new(cc.outputs['Color'], mm.inputs['B'])
+    return mm.outputs['Result']
+
+
+def marble_material(name='marble', paint=True, lo='#c2a690', hi='#ecd6c2', rough=0.38, hem=False, ao=0.0,
+                    ao_dist=0.06, sss=(0.12, 0.08, 0.06), coat=0.15):
     m = bpy.data.materials.new(name); m.use_nodes = True
     nt = m.node_tree; n = nt.nodes; L = nt.links
     b = n['Principled BSDF']
     b.inputs['Roughness'].default_value = rough
     b.inputs['Subsurface Weight'].default_value = 0.35
-    b.inputs['Subsurface Radius'].default_value = (0.12, 0.08, 0.06)
+    b.inputs['Subsurface Radius'].default_value = sss
     b.inputs['Subsurface Scale'].default_value = 0.08
-    b.inputs['Coat Weight'].default_value = 0.15; b.inputs['Coat Roughness'].default_value = 0.25
+    b.inputs['Coat Weight'].default_value = coat; b.inputs['Coat Roughness'].default_value = 0.25
     tc = n.new('ShaderNodeTexCoord')
     # faint grey veins
     wv = n.new('ShaderNodeTexWave'); wv.inputs['Scale'].default_value = 1.4; wv.inputs['Distortion'].default_value = 9.0
@@ -125,31 +204,32 @@ def marble_material(name='marble', paint=True, lo='#b9b3ab', hi='#efe8de', rough
     if hem:     # a carved border along the drape's edges: a faintly darker band with a groove line
         ed = n.new('ShaderNodeAttribute'); ed.attribute_name = 'edge'
         rp = n.new('ShaderNodeValToRGB'); cr = rp.color_ramp; cr.interpolation = 'CONSTANT'
-        cr.elements[0].color = (1, 1, 1, 1); cr.elements[1].position = 0.66; cr.elements[1].color = (0.55, 0.55, 0.55, 1)
-        e = cr.elements.new(0.71); e.color = (0.8, 0.8, 0.8, 1)
+        cr.elements[0].color = (1, 1, 1, 1); cr.elements[1].position = 0.66; cr.elements[1].color = (0.5, 0.5, 0.5, 1)
+        e = cr.elements.new(0.71); e.color = (0.78, 0.78, 0.78, 1)
         L.new(ed.outputs['Fac'], rp.inputs['Fac'])
         mm = n.new('ShaderNodeMix'); mm.data_type = 'RGBA'; mm.blend_type = 'MULTIPLY'; mm.inputs['Factor'].default_value = 1.0
         L.new(col_, mm.inputs['A']); L.new(rp.outputs['Color'], mm.inputs['B']); col_ = mm.outputs['Result']
+    if ao: col_ = _ao(n, L, col_, ao, ao_dist)
     L.new(col_, b.inputs['Base Color'])
     return m
 
 
 def skin_material():
-    """Living skin: warm, with subsurface scattering, faint mottling, natural lips and cheeks, and brows."""
+    """Living skin: a neutral light tan, subsurface scattering, faint mottling, natural lips and cheeks, brows."""
     m = bpy.data.materials.new('skin'); m.use_nodes = True
     nt = m.node_tree; n = nt.nodes; L = nt.links
     b = n['Principled BSDF']
     b.inputs['Roughness'].default_value = 0.5
-    b.inputs['Subsurface Weight'].default_value = 0.8
-    b.inputs['Subsurface Radius'].default_value = (1.0, 0.4, 0.22)
+    b.inputs['Subsurface Weight'].default_value = 0.5
+    b.inputs['Subsurface Radius'].default_value = (0.7, 0.35, 0.2)
     b.inputs['Subsurface Scale'].default_value = 0.006 * S       # a few millimetres of skin, at his scale
     b.inputs['Specular IOR Level'].default_value = 0.45
     tc = n.new('ShaderNodeTexCoord')
     nz = n.new('ShaderNodeTexNoise'); nz.inputs['Scale'].default_value = 9.0; nz.inputs['Detail'].default_value = 3.0
     L.new(tc.outputs['Object'], nz.inputs['Vector'])
-    col_ = _node_mix(n, L, nz.outputs['Fac'], srgb('#b98a70'), srgb('#cfa088'))
+    col_ = _node_mix(n, L, nz.outputs['Fac'], srgb('#ab8a7c'), srgb('#c4a494'))
     attr = n.new('ShaderNodeAttribute'); attr.attribute_name = 'paint'
-    k = n.new('ShaderNodeMath'); k.operation = 'MULTIPLY'; k.inputs[1].default_value = 0.6
+    k = n.new('ShaderNodeMath'); k.operation = 'MULTIPLY'; k.inputs[1].default_value = 0.45
     L.new(attr.outputs['Alpha'], k.inputs[0])
     col_ = _node_mix(n, L, k.outputs[0], col_, attr.outputs['Color'])
     br = n.new('ShaderNodeAttribute'); br.attribute_name = 'brow'
@@ -171,7 +251,8 @@ def himation_material(red='#8e2a22', green='#2f5a32', gold='#d8b25a', name='hima
     cr.elements[1].position = 0.66; cr.elements[1].color = srgb(gold)
     e = cr.elements.new(0.71); e.color = srgb(green)
     e = cr.elements.new(0.97); e.color = srgb(gold)
-    L.new(attr.outputs['Fac'], ramp.inputs['Fac']); L.new(ramp.outputs['Color'], b.inputs['Base Color'])
+    L.new(attr.outputs['Fac'], ramp.inputs['Fac'])
+    L.new(_ao(n, L, ramp.outputs['Color'], 0.45, 0.08), b.inputs['Base Color'])
     # the gold thread is a little metallic and glossier
     gm = n.new('ShaderNodeMath'); gm.operation = 'COMPARE'; gm.inputs[1].default_value = 0.685; gm.inputs[2].default_value = 0.025
     L.new(attr.outputs['Fac'], gm.inputs[0])
@@ -205,19 +286,42 @@ def eye_material(iris='#6b4c33', pupil='#1c1410', white='#efe8de', name='eye_pai
     return m
 
 
+def fawn_material():
+    """The fawn skin (his polishing cloth): tawny with pale spots, in the cloth's own UVs so the spots stay put."""
+    m = bpy.data.materials.new('fawn'); m.use_nodes = True; nt = m.node_tree; n = nt.nodes; L = nt.links
+    b = n['Principled BSDF']; b.inputs['Roughness'].default_value = 0.85; b.inputs['Sheen Weight'].default_value = 0.8
+    tc = n.new('ShaderNodeTexCoord'); vo = n.new('ShaderNodeTexVoronoi'); vo.inputs['Scale'].default_value = 9.0
+    vo.inputs['Randomness'].default_value = 0.8
+    L.new(tc.outputs['UV'], vo.inputs['Vector'])
+    lt = n.new('ShaderNodeMath'); lt.operation = 'LESS_THAN'; lt.inputs[1].default_value = 0.16
+    L.new(vo.outputs['Distance'], lt.inputs[0])
+    nz = n.new('ShaderNodeTexNoise'); nz.inputs['Scale'].default_value = 6.0; L.new(tc.outputs['UV'], nz.inputs['Vector'])
+    base = _node_mix(n, L, nz.outputs['Fac'], srgb('#a07650'), srgb('#c49a6c'))
+    L.new(_node_mix(n, L, lt.outputs[0], base, srgb('#f0e4cc')), b.inputs['Base Color'])
+    return m
+
+
+def glass_material():
+    m = bpy.data.materials.new('dio_glass'); m.use_nodes = True
+    b = m.node_tree.nodes['Principled BSDF']
+    b.inputs['Base Color'].default_value = srgb('#e8c98a'); b.inputs['Roughness'].default_value = 0.05
+    b.inputs['Transmission Weight'].default_value = 1.0; b.inputs['IOR'].default_value = 1.48
+    return m
+
+
 if FINISH == 'painted':
     M_SKIN = marble_material()
     M_EYE = eye_material()
-    M_HAIR = mat('hair_marble', '#d8cfc2', 0.5)       # hair carved in marble, a touch warmer and rougher
+    M_HAIR = marble_material('hair_painted', paint=False, lo='#4a2a1c', hi='#7a4a2e', rough=0.5, ao=0.55, ao_dist=0.05)
     M_IVY = mat('ivy_painted', '#3f7a34', 0.45); M_IVY2 = mat('ivy_painted2', '#2f6428', 0.45)
     M_GRAPE = mat('grape_painted', '#5b2a6b', 0.3, coat=0.5)
     M_HIMATION = himation_material()
 elif FINISH == 'white':
-    M_SKIN = marble_material('marble_white', paint=False, lo='#c3bdb4', hi='#f2ede5')
+    M_SKIN = marble_material('marble_white', paint=False, lo='#c9d4e2', hi='#eef4fb', sss=(0.1, 0.11, 0.14), coat=0.1)   # cool, so it reads white under the bar's warm key
     M_EYE = M_SKIN                                       # blank classical eyes
-    M_HAIR = marble_material('hair_white', paint=False, lo='#bfb7aa', hi='#ece5d9', rough=0.45)
+    M_HAIR = marble_material('hair_white', paint=False, lo='#bcc7d4', hi='#e4ecf5', rough=0.45, ao=0.6, ao_dist=0.05)
     M_IVY = M_IVY2 = M_GRAPE = M_HAIR
-    M_HIMATION = marble_material('drape_white', paint=False, lo='#a39b90', hi='#d6cdbf', rough=0.6, hem=True)
+    M_HIMATION = marble_material('drape_white', paint=False, lo='#949eaa', hi='#bcc5d0', rough=0.6, hem=True, ao=0.6, ao_dist=0.1)
 else:
     M_SKIN = skin_material()
     M_EYE = eye_material(iris='#6a4428', pupil='#0b0806', white='#cdbfb1', name='eye_living', gloss=1.0)
@@ -242,10 +346,10 @@ lips = np.clip(1.4 - (dx ** 2 + dz ** 2), 0, 1) * (V[:, 1] < front_y + 0.018)
 a = lips * 0.75
 for eye in (eyeL, eyeR):
     c = np.array([eye[0] * 1.15, front_y + 0.03, (eye[2] + mouth[2]) / 2 - 0.004])
-    d = np.linalg.norm((V - c) / np.array([0.024, 0.03, 0.02]), axis=1)
-    cheek = np.clip(1 - d, 0, 1) ** 1.5 * 0.28
+    d = np.linalg.norm((V - c) / np.array([0.026, 0.03, 0.022]), axis=1)
+    cheek = np.clip(1 - d, 0, 1) ** 1.2 * 0.5
     blend = cheek / np.maximum(a + cheek, 1e-6)
-    tint = np.array(srgb('#d98c78')[:3])
+    tint = np.array(srgb('#d2604e')[:3])
     col[:, :3] = col[:, :3] * (1 - blend[:, None]) + tint[None] * blend[:, None]
     a = np.maximum(a, cheek)
 col[:, 3] = a
@@ -254,24 +358,24 @@ ca.data.foreach_set('color', col.astype(np.float32).ravel())
 brow = np.zeros(len(V))
 for eye in (eyeL, eyeR):     # an arch over each eye, on the front of the brow ridge
     u_ = (V[:, 0] - eye[0] * 1.05) / 0.024
-    zc = eye[2] + 0.0175 - 0.006 * u_ ** 2 + 0.002 * np.sign(eye[0]) * (V[:, 0] - eye[0]) / 0.024 * 0
+    zc = eye[2] + 0.0175 - 0.006 * u_ ** 2
     band = np.clip(1 - np.abs(V[:, 2] - zc) / 0.0032, 0, 1) * np.clip(1 - np.abs(u_), 0, 1) ** 0.4
     brow = np.maximum(brow, band * (V[:, 1] < eye[1] + 0.005) * 0.85)
 ba = body.data.attributes.new('brow', 'FLOAT', 'POINT'); ba.data.foreach_set('value', brow.astype(np.float32))
 
-# eyes: marble eyeballs with a painted iris (ancient statues were painted); blank in white marble
+# eyes: marble eyeballs with a painted iris (ancient statues were painted); blank in white marble.
+# Parented to the eye bones, so the face rig can turn them.
 EXTRA = []   # everything that belongs to him (rendered with him)
 def helper_sphere(group):
     gi_ = body.vertex_groups[group].index
     pts = np.array([V[v.index] for v in body.data.vertices if any(g.group == gi_ and g.weight > 0.5 for g in v.groups)])
     c = pts.mean(axis=0); return c, float(np.linalg.norm(pts - c, axis=1).mean())
 EYES = {'L': helper_sphere('helper-l-eye'), 'R': helper_sphere('helper-r-eye')}
-print('[eyes]', {k: (tuple(np.round(c, 4)), round(r_, 4)) for k, (c, r_) in EYES.items()})
 for side in 'LR':
     e, eye_r = EYES[side]
     bpy.ops.mesh.primitive_uv_sphere_add(radius=eye_r, segments=32, ring_count=16, location=(0, 0, 0))
     ob = bpy.context.active_object; ob.name = 'eye' + side; ob.data.materials.append(M_EYE); smooth(ob)
-    ob.parent = rig; ob.parent_type = 'BONE'; ob.parent_bone = 'head'
+    ob.parent = rig; ob.parent_type = 'BONE'; ob.parent_bone = 'eye.' + side
     ob.matrix_world = rig.matrix_world @ Matrix.Translation(Vector(e))
     EXTRA.append(ob)
 
@@ -284,10 +388,23 @@ def parent_head(ob, bone='head'):
     return ob
 
 
+def skin_to(ob, weights):
+    """Parent a mesh modelled in rig space to the rig with an armature modifier; weights: {bone: per-vertex array}."""
+    ob.parent = rig; ob.parent_type = 'OBJECT'; ob.matrix_parent_inverse = Matrix.Identity(4)
+    ob.matrix_basis = Matrix.Identity(4)
+    for bn, w in weights.items():
+        vg = ob.vertex_groups.new(name=bn)
+        for i, wi in enumerate(w):
+            if wi > 1e-3: vg.add([i], float(wi), 'REPLACE')
+    md = ob.modifiers.new('arm', 'ARMATURE'); md.object = rig
+    EXTRA.append(ob)
+    return ob
+
+
 # ---------------------------------------------------------------- hair: the Louvre (Richelieu) Dionysus's
-# Parted in the centre and swept back from the forehead in thick waves to a knot at the back of the head,
-# curls at the temples, and long corkscrew locks falling onto the shoulders. The forehead shows below the
-# parting. Each wave is a tube laid on the scalp (found by ray casts against the head) over a thin cap.
+# Parted in the centre; a few thick S-shaped waves from the parting sweep sideways and back over the temples,
+# under the wreath, to a knot at the back of the head; long curls at the temples frame the face, and thick
+# twisted locks fall from behind the ears onto the shoulders. The forehead shows below the parting.
 def group_w(name):
     gi_ = body.vertex_groups[name].index; w = np.zeros(len(V))
     for v in body.data.vertices:
@@ -302,7 +419,17 @@ brow_z = max(eyeL[2], eyeR[2]) + 0.022
 skin_head = (w_head > 0.5) & (w_body > 0.5)
 HBVH = BVHTree.FromPolygons([tuple(v) for v in V], [tuple(p.vertices) for p in body.data.polygons
                                                      if all(skin_head[i] and w_ears[i] < 0.3 for i in p.vertices)])
+BODYBVH = BVHTree.FromPolygons([tuple(v) for v in V], [tuple(p.vertices) for p in body.data.polygons
+                                                       if all(w_body[i] > 0.5 for i in p.vertices)])
 HO = Vector((0.0, float(head_c[1]) - 0.006, float(brow_z) + 0.002))   # a point inside the cranium
+
+
+def push_out(p, clear):
+    """Move a point (rig space, rest) out of the body so it is at least `clear` from the skin."""
+    loc, nrm, _, _ = BODYBVH.find_nearest(p)
+    if loc is None: return p
+    dd = (p - loc).dot(nrm)
+    return loc + nrm * clear + (p - loc - nrm * dd) if dd < clear else p
 
 
 def sdir(phi, th, side):
@@ -340,7 +467,8 @@ HL = {ph: hairline_th(ph) for ph in range(0, 181, 5)}
 def hl(phi): return float(np.interp(phi, list(HL), list(HL.values())))
 print('[hair] hairline elevation at 0/45/90/135/180:', [round(hl(p_), 1) for p_ in (0, 45, 90, 135, 180)])
 
-# the cap: the scalp above the hairline, a little thick, hidden under the waves
+# the cap: the scalp above the hairline under the waves. It thins to nothing at its edge (no lip shows).
+CAP = 0.006
 dV = V - np.array(HO)
 phiV = np.degrees(np.arctan2(np.abs(dV[:, 0]), -dV[:, 1])); thV = np.degrees(np.arcsin(dV[:, 2] / np.linalg.norm(dV, axis=1)))
 hairsel = skin_head & (w_ears < 0.2) & (thV > np.interp(phiV, list(HL), list(HL.values())) + 6) & (dV[:, 2] > -0.11)
@@ -355,8 +483,13 @@ for a_ in list(hme.attributes):
     if a_.name in ('paint', 'brow'): hme.attributes.remove(a_)
 cap = bpy.data.objects.new('haircap', hme); link(cap); cap.data.materials.append(M_HAIR)
 for p in cap.data.polygons: p.use_smooth = True
+cw = cap.vertex_groups.new(name='thick')
+for v in hme.vertices:
+    d_ = Vector(v.co) - HO; ph_ = math.degrees(math.atan2(abs(d_.x), -d_.y)); th_ = math.degrees(math.asin(d_.z / d_.length))
+    cw.add([v.index], float(np.clip((th_ - hl(ph_) - 6) / 9, 0, 1)), 'REPLACE')
 parent_head(cap)
-sol = cap.modifiers.new('sol', 'SOLIDIFY'); sol.thickness = 0.008; sol.offset = 1.0
+sol = cap.modifiers.new('sol', 'SOLIDIFY'); sol.thickness = CAP; sol.offset = 1.0
+sol.vertex_group = 'thick'; sol.thickness_vertex_group = 0.0
 sd = cap.modifiers.new('sub', 'SUBSURF'); sd.levels = 1; sd.render_levels = 1
 
 TAPER = {}
@@ -369,7 +502,10 @@ def taper_curve(key, pts_):
     return TAPER[key]
 
 
-def tube(name, pts_, radius, taper, bone='head', mat_=None, res=3):
+def curve_tube(name, pts_, radius, taper, mat_=None, res=3):
+    pts_ = [Vector(p_) for p_ in pts_]
+    while len(pts_) < 5:     # a NURBS curve of order 4 needs enough points
+        pts_ = [pts_[0]] + [x for i in range(len(pts_) - 1) for x in (pts_[i].lerp(pts_[i + 1], 0.5), pts_[i + 1])]
     cu_ = bpy.data.curves.new(name, 'CURVE'); cu_.dimensions = '3D'; cu_.bevel_depth = radius; cu_.bevel_resolution = res
     cu_.use_fill_caps = True; cu_.resolution_u = 6
     sp_ = cu_.splines.new('NURBS'); sp_.points.add(len(pts_) - 1)
@@ -377,7 +513,11 @@ def tube(name, pts_, radius, taper, bone='head', mat_=None, res=3):
     sp_.order_u = 4; sp_.use_endpoint_u = True
     if taper: cu_.taper_object = taper
     ob = bpy.data.objects.new(name, cu_); link(ob); cu_.materials.append(mat_ or M_HAIR)
-    return parent_head(ob, bone)
+    return ob
+
+
+def tube(name, pts_, radius, taper, bone='head', mat_=None, res=3):
+    return parent_head(curve_tube(name, pts_, radius, taper, mat_, res), bone)
 
 
 def catmull(ctrl, n):
@@ -391,68 +531,165 @@ def catmull(ctrl, n):
     return out
 
 
-# the waves: from the parting (front to crown) sideways and back to the knot
-R_W = 0.0125                   # a wave's tube radius (rig metres)
-CAP = 0.006
-NW = 8
-t_wave = taper_curve('wave', [(0, 0.35), (0.14, 1.0), (0.75, 1.0), (1.0, 0.6)])
+def sweep_bm(bm, rows, ring=20, ridges=0, ridge_depth=0.0, cap_ends=True):
+    """Add a tube with an elliptical cross-section to a bmesh. rows: (centre, out, across, half_w, half_h);
+    the outer half of the section is carved with `ridges` + 1 rounded strands of hair."""
+    R = []
+    for (c, o, ac, w, h) in rows:
+        rv = []
+        for j in range(ring):
+            ang = 2 * math.pi * j / ring; x_ = math.cos(ang); y_ = math.sin(ang); k = 1.0
+            if ridges and y_ > 0:
+                k = 1 - ridge_depth * (0.5 - 0.5 * math.cos(2 * math.pi * ridges * (x_ + 1) / 2)) * y_
+            rv.append(bm.verts.new(c + ac * (w * x_) + o * (h * y_ * k)))
+        R.append(rv)
+    for r0, r1 in zip(R, R[1:]):
+        for j in range(ring):
+            bm.faces.new((r0[j], r0[(j + 1) % ring], r1[(j + 1) % ring], r1[j]))
+    if cap_ends:
+        for rv, row in ((R[0], rows[0]), (R[-1], rows[-1])):
+            cv = bm.verts.new(row[0])
+            for j in range(ring): bm.faces.new((rv[j], rv[(j + 1) % ring], cv))
+    return R
+
+
+def bm_object(name, bm, mats, subd=1):
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    me = bpy.data.meshes.new(name); bm.to_mesh(me); bm.free()
+    ob = bpy.data.objects.new(name, me); link(ob)
+    for m_ in mats: me.materials.append(m_)
+    for p in me.polygons: p.use_smooth = True
+    if subd: s_ = ob.modifiers.new('sub', 'SUBSURF'); s_.levels = subd; s_.render_levels = subd
+    return ob
+
+
+def smoothstep(e0, e1, x):
+    t = min(1.0, max(0.0, (x - e0) / (e1 - e0))); return t * t * (3 - 2 * t)
+
+
+# the waves: five thick S-shaped strands a side, from the parting sideways and back over the temples to the knot
+WAVES = ((33, 0.0150, 0.0055, 0.085, 0.3), (46, 0.0168, 0.0075, 0.075, 1.9), (59, 0.0152, 0.0062, 0.092, 3.6),
+         (72, 0.0170, 0.0080, 0.080, 0.9), (85, 0.0140, 0.0050, 0.070, 2.7))   # start elevation, half width, S amplitude, wavelength, phase
+WAVE_TOP = 0.0
+hbm = bmesh.new()
 for side in (-1, 1):
-    for i in range(NW):
-        u = i / (NW - 1)
-        th0 = hl(0) + 2 + (98 - hl(0) - 2) * u ** 0.9
-        front_path = [(4, th0), (28, hl(28) + 3.5), (58, hl(58) + 4.5), (88, hl(88) + 6), (122, hl(122) + 9), (152, -2), (172, -4)]
-        crown_path = [(4, th0), (25, th0 - 12), (60, 62), (100, 40), (135, 20), (158, 6), (174, 0)]
+    for i, (th0, w0, amp, lam, ph0) in enumerate(WAVES):
+        u = i / (len(WAVES) - 1)
+        w0 *= 1.0 + 0.06 * side * (1 if i % 2 else -1); ph0 += 0.7 * (side > 0)
+        front_path = [(0.8, th0), (18, hl(18) + 6), (45, hl(45) + 7), (78, hl(78) + 8), (112, hl(112) + 10), (146, -2), (170, -5)]
+        crown_path = [(0.8, th0), (25, th0 - 6), (60, 60), (100, 40), (135, 22), (158, 7), (174, 0)]
         ctrl = [tuple(np.array(f_) * (1 - u) + np.array(c_) * u) for f_, c_ in zip(front_path, crown_path)]
-        ctrl[0] = (4, th0)
-        path = catmull(ctrl, 46)
-        pts_ = []; s_acc = 0.0; prev = None
+        ctrl[0] = (0.8, th0)
+        path = catmull(ctrl, 60)
         raw = [scalp(ph, th, side, 0) for ph, th in path]
-        for j, (ph, th) in enumerate(path):
-            if j: s_acc += (raw[j] - raw[j - 1]).length
-            wave = math.sin(2 * math.pi * s_acc / 0.042 + 0.5 * u)
-            d = sdir(ph, th, side)
+        s_ = [0.0]
+        for j in range(1, len(raw)): s_.append(s_[-1] + (raw[j] - raw[j - 1]).length)
+        tot = s_[-1]; rows = []
+        for j in range(len(raw)):
+            sj = s_[j] / tot
+            d = (raw[j] - HO).normalized()
             tang = (raw[min(j + 1, len(raw) - 1)] - raw[max(j - 1, 0)]).normalized()
             lat = d.cross(tang).normalized()
-            root = max(0.0, 1 - j / 4)          # the roots dip into the parting, so it shows as a groove
-            off = CAP + R_W * (0.8 - 0.55 * root) + 0.003 * max(0.0, wave)
-            pts_.append(raw[j] + d * off + lat * (0.0065 * wave * side * (1 - root)))
-        tube(f'wave{side}{i}', pts_, R_W * (1.0 - 0.12 * u), t_wave)
+            env = smoothstep(0.0, 0.16, sj)                 # the root runs straight out of the parting
+            tap = float(np.interp(sj, (0, 0.05, 0.45, 1.0), (0.72, 1.0, 0.95, 0.4)))
+            wv_ = 2 * math.pi * s_[j] / lam + ph0
+            h = w0 * 0.6 * tap * (1 + 0.22 * math.sin(wv_ + math.pi / 2) * env)
+            c = raw[j] + d * (CAP * 0.5 + h * 0.6) + lat * (amp * math.sin(wv_) * env)
+            rows.append((c, d, lat, w0 * tap, h))
+            WAVE_TOP = max(WAVE_TOP, CAP * 0.5 + h * 1.6)
+        sweep_bm(hbm, rows, ridges=2, ridge_depth=0.22)
+waves = parent_head(bm_object('waves', hbm, [M_HAIR]))
 
 # the knot at the back: a twisted roll of hair
 kc = scalp(180, -4, 1, 0); kd = sdir(180, -4, 1)
 kx, kz = Vector((1, 0, 0)), kd.cross(Vector((1, 0, 0))).normalized()
-for ring, (rx, rz, rad, out_) in enumerate(((0.036, 0.022, 0.015, 0.018), (0.02, 0.012, 0.013, 0.03))):
+for ring_, (rx, rz, rad, out_) in enumerate(((0.036, 0.022, 0.015, 0.016), (0.02, 0.012, 0.013, 0.028))):
     pts_ = []
     for j in range(41):
         a_ = 2 * math.pi * j / 40
         pts_.append(kc + kd * (out_ + 0.004 * math.sin(6 * a_)) + kx * rx * math.cos(a_) + kz * rz * math.sin(a_))
-    tube(f'knot{ring}', pts_, rad, None)
+    tube(f'knot{ring_}', pts_, rad, None)
 
-# curls at the temples, in front of the ears
-def corkscrew(start, length, turns, radius, tube_r, name, sway=(0, 0), bone='head', taper=None):
+
+def coil(start, length, turns, radius, sway, phase=0.0, n=80, grow=(0.6, 0.4), wobble=0.0):
+    """A corkscrew curl hanging from `start` (rig space)."""
     pts_ = []
-    for i in range(61):
-        t = i / 60; a_ = turns * 2 * math.pi * t
-        rr = radius * (0.6 + 0.4 * t)
+    for i in range(n):
+        t = i / (n - 1); a_ = phase + turns * 2 * math.pi * t
+        rr = radius * (grow[0] + grow[1] * t) * (1 + wobble * math.sin(3.1 * a_))
         pts_.append(Vector(start) + Vector((rr * math.cos(a_) + sway[0] * t, rr * math.sin(a_) + sway[1] * t, -length * t)))
-    return tube(name, pts_, tube_r, taper or taper_curve('lock', [(0, 1), (0.5, 0.9), (1, 0.35)]), bone)
+    return pts_
 
 
+# curls at the temples: long, thick, brought forward in front of the ears to frame the face
+t_lock = taper_curve('lock', [(0, 1), (0.6, 0.85), (1, 0.4)])
 for side in (-1, 1):
-    for k, ph in enumerate((70, 82)):
-        st_ = scalp(ph, hl(ph) + 2, side, CAP + 0.004)
-        corkscrew(st_, 0.034 - 0.006 * k, 2.2, 0.0055, 0.0042, f'temple{side}{k}', (side * 0.004, -0.002))
+    for k, (ph, ln_, tw, rr_, tr, ph_) in enumerate(((60, 0.072, 2.4, 0.0085, 0.0074, 0.4), (73, 0.060, 2.1, 0.0095, 0.0068, 2.2))):
+        st_ = scalp(ph, hl(ph) + 3, side, CAP + 0.004)
+        pts_ = coil(st_, ln_, tw, rr_, (side * 0.007, -0.016), phase=ph_ + (side > 0) * 1.3, wobble=0.12)
+        pts_ = [push_out(p_, tr * 1.1 + 0.002) for p_ in pts_]
+        tube(f'temple{side}{k}', pts_, tr, t_lock)
 
-# long corkscrew locks from behind the ears onto the shoulders
+# long twisted locks from behind the ears onto the shoulders: thick, few turns, each its own; the upper part
+# follows the head and the ends rest on the shoulders (skinned to head, neck and chest)
+t_long = taper_curve('long', [(0, 0.9), (0.15, 1.0), (0.7, 0.82), (1, 0.45)])
+sh_z = float(bone_head('clavicle.L')[2])
 for side in (-1, 1):
-    for k, (ph, th, ln_, tw) in enumerate(((112, -16, 0.19, 3.4), (128, -20, 0.20, 3.8), (144, -22, 0.17, 3.2))):
-        st_ = scalp(ph, th, side, CAP + 0.006)
-        corkscrew(st_, ln_, tw, 0.011, 0.0085, f'lock{side}{k}', (side * 0.016, -0.03 + 0.012 * k), bone='neck03')
+    for k, (ph, th, ln_, tw, rr_, ph_) in enumerate(((112, -14, 0.19, 1.7, 0.013, 0.0), (132, -20, 0.205, 2.1, 0.016, 2.1),
+                                                     (150, -24, 0.17, 1.5, 0.011, 4.0))):
+        if side > 0: ph_ += 1.1; ln_ *= 0.96 + 0.05 * k
+        st_ = scalp(ph, th, side, CAP + 0.008)
+        pts_ = coil(st_, ln_, tw, rr_, (side * (0.018 + 0.006 * k), -0.026 + 0.014 * k), phase=ph_, wobble=0.15)
+        pts_ = [push_out(p_, 0.012 * 1.05 + 0.002) for p_ in pts_]
+        cob = curve_tube(f'lockc{side}{k}', pts_, 0.012, t_long)
+        dg_ = bpy.context.evaluated_depsgraph_get()
+        me = bpy.data.meshes.new_from_object(cob.evaluated_get(dg_)); bpy.data.objects.remove(cob, do_unlink=True)
+        lk = bpy.data.objects.new(f'lock{side}{k}', me); link(lk)
+        for p in me.polygons: p.use_smooth = True
+        zs = np.array([v.co.z for v in me.vertices]); z_top = float(st_.z)
+        wh = np.array([smoothstep(0, 1, 1 - (z_top - z) / 0.08) for z in zs])
+        below = np.array([smoothstep(0, 1, (sh_z + 0.03 - z) / 0.06) for z in zs]) * (1 - wh)
+        skin_to(lk, {'head': wh, 'neck03': (1 - wh) - below, 'spine01': below * 0.6,
+                     ('clavicle.L' if side > 0 else 'clavicle.R'): below * 0.4})
 
 # ---------------------------------------------------------------- the ivy wreath on the hair, grapes at the temples
+def ivy_outline(n=60):
+    """A five-lobed ivy leaf in its plane (x across, y up the leaf), the stalk at the bottom; about 1.3 tall."""
+    lobes = ((90, 1.0), (32, 0.68), (148, 0.68), (-22, 0.46), (202, 0.46))
+    out = []
+    for i in range(n):
+        th = 360 * i / n - 90
+        rr = 0.3
+        for a_, L_ in lobes:
+            dd = math.radians(((th - a_ + 180) % 360) - 180)
+            rr = max(rr, L_ * max(0.0, math.cos(dd)) ** 5)
+        dn = ((th + 90 + 180) % 360) - 180
+        rr *= 1 - 0.55 * math.exp(-(dn / 14) ** 2)
+        out.append((rr * math.cos(math.radians(th)), rr * math.sin(math.radians(th)) + 0.25))
+    return out
+
+
+IVY = ivy_outline()
+
+
+def ivy_leaf(bm, M, size, mat_index=0, thick=0.08):
+    """Add a flat ivy leaf (cupped a little, folded along the midrib, with thickness) to bm. Leaf plane: local XZ,
+    tip +Z, thickness along Y; the stalk at the origin."""
+    def P3(x_, y_, face):
+        return M @ Vector((x_ * size, (0.12 * abs(x_) - 0.08 * (x_ * x_ + (y_ - 0.5) ** 2)) * size + face * thick * size * 0.5, y_ * size))
+    top = [bm.verts.new(P3(x_, y_, -1)) for x_, y_ in IVY]; bot = [bm.verts.new(P3(x_, y_, 1)) for x_, y_ in IVY]
+    ct = bm.verts.new(P3(0, 0.5, -1)); cb = bm.verts.new(P3(0, 0.5, 1)); n = len(IVY)
+    for j in range(n):
+        k = (j + 1) % n
+        for f in (bm.faces.new((top[j], top[k], ct)), bm.faces.new((bot[k], bot[j], cb)), bm.faces.new((top[k], top[j], bot[j], bot[k]))):
+            f.material_index = mat_index
+
+
 WTH = lambda ph: float(np.interp(ph, (0, 45, 90, 135, 180), (hl(0) + 30, hl(45) + 30, hl(90) + 33, 18, 16)))
-W_OFF = CAP + 1.6 * R_W + 0.006
-NL = 15
+W_OFF = CAP + 0.018 + 0.004
+NL = 14
+wbm = bmesh.new()
+band = []
 for side in (-1, 1):
     for i in range(NL + 1):
         if side == -1 and i in (0, NL): continue        # the front and back leaves once
@@ -463,29 +700,42 @@ for side in (-1, 1):
         if bin_.z < 0: bin_, tang = -bin_, -tang          # the same way up on both sides
         nrm = bin_.cross(tang).normalized()
         # each leaf stands up off the hair, leaning out, alternately turned (ivy leaves on a band)
-        rot = (Matrix((tang, nrm, bin_)).transposed() @ Matrix.Rotation(math.radians(-30), 3, 'X')
-               @ Matrix.Rotation(math.radians(30 * (1 if i % 2 else -1)), 3, 'Y'))
-        bpy.ops.mesh.primitive_uv_sphere_add(radius=0.019, segments=16, ring_count=8, location=(0, 0, 0)); lf = bpy.context.active_object
-        lf.data.vertices.foreach_set('co', np.array([(x_, y_, z_ + 0.3 * 0.019 * (1 - (x_ / 0.019) ** 2) - 0.003 * (z_ < 0)) for x_, y_, z_ in (v.co for v in lf.data.vertices)]).ravel())
-        lf.data.materials.append(M_IVY if (i + (side > 0)) % 2 else M_IVY2); smooth(lf)
-        lf.parent = rig; lf.parent_type = 'BONE'; lf.parent_bone = 'head'
-        lf.matrix_world = rig.matrix_world @ Matrix.LocRotScale(pos + bin_ * 0.008, rot.to_quaternion(), Vector((0.85, 0.22, 1.0)))
-        EXTRA.append(lf)
+        rot = (Matrix((tang, nrm, bin_)).transposed() @ Matrix.Rotation(math.radians(-38), 3, 'X')
+               @ Matrix.Rotation(math.radians(24 * (1 if i % 2 else -1)), 3, 'Y'))
+        M = Matrix.Translation(pos - bin_ * 0.004) @ rot.to_4x4()
+        ivy_leaf(wbm, M, 0.03 * (1.0 + 0.12 * math.sin(i * 2.3 + side)), (i + (side > 0)) % 2)
+for ph in range(0, 181, 6):
+    band.append(scalp(ph, WTH(ph), 1, W_OFF - 0.004))
+band = [Vector((-p_.x, p_.y, p_.z)) for p_ in reversed(band[1:])] + band
+wreath = parent_head(bm_object('wreath', wbm, [M_IVY, M_IVY2], subd=0))
+tube('vine', band, 0.0026, None, mat_=M_IVY2)
+
+# grapes: a bunch of 14 at each temple, hanging past the temple in front of the ear
+gbm = bmesh.new()
 for side in (-1, 1):
-    ph = 74
-    base_ = scalp(ph, WTH(ph), side, W_OFF + 0.004) + Vector((0, 0, -0.012))
-    for (gx, gz) in ((0, 0), (-.009, -.011), (.009, -.011), (0, -.022), (-.006, -.031), (.006, -.031), (0, -.04)):
-        bpy.ops.mesh.primitive_uv_sphere_add(radius=0.0095, segments=12, ring_count=8, location=(0, 0, 0)); g_ = bpy.context.active_object
-        g_.data.materials.append(M_GRAPE); smooth(g_)
-        g_.parent = rig; g_.parent_type = 'BONE'; g_.parent_bone = 'head'
-        g_.matrix_world = rig.matrix_world @ Matrix.Translation(base_ + Vector((gx * 0.6, -abs(gx) * 0.6 - 0.002, gz)))
-        EXTRA.append(g_)
+    ph = 80
+    top_ = scalp(ph, WTH(ph) - 4, side, W_OFF + 0.008)
+    out_ = sdir(ph, 0, side); out_.z = 0; out_.normalize()
+    axis_ = Vector((0, -0.12 * 1, -1)).normalized()
+    stem = [top_ + Vector((0, 0, 0.01)), top_ + Vector((0, 0, 0.004)), top_ + axis_ * 0.006, top_ + axis_ * 0.014]
+    tube(f'grapestem{side}', stem, 0.0018, None, mat_=M_IVY2)
+    rowsg = ((4, 0.0105), (4, 0.0098), (3, 0.0082), (2, 0.0062), (1, 0.0))
+    j = 0
+    for ri, (nb, rad) in enumerate(rowsg):
+        for b_ in range(nb):
+            a_ = 2 * math.pi * b_ / nb + ri * 0.8
+            c = top_ + axis_ * (0.017 + 0.0125 * ri) + out_ * (0.004 + rad * math.cos(a_)) \
+                + Vector((0, 1, 0)).cross(out_).normalized() * (rad * math.sin(a_) * side)
+            c = push_out(c, 0.009)
+            rr = 0.0084 * (1 + 0.08 * math.sin(j * 1.7)); j += 1
+            bmesh.ops.create_uvsphere(gbm, u_segments=14, v_segments=8, radius=rr, matrix=Matrix.Translation(c))
+grapes = parent_head(bm_object('grapes', gbm, [M_GRAPE], subd=0))
 
 # ---------------------------------------------------------------- the himation: a rolled drape over his left shoulder
 # It runs from behind his left shoulder, over it, and down across his chest to the right hip (below the
 # counter, where it would wrap his hips). It follows the body's surface and is parented to the chest.
-# It is built as a curve with a flattened, folded cross-section, then made a mesh whose 'edge' attribute
-# (0 along the middle, 1 at both long edges) gives the cloth its green and gold hem.
+# It is built as a curve with a pleated cross-section (a few broad folds along its length), then made a mesh
+# whose 'edge' attribute (0 along the middle, 1 at both long edges) gives the cloth its green and gold hem.
 shL = np.array(bone_head('upperarm01.L')); hipR = np.array(bone_head('upperleg01.R'))
 names = [g.name for g in body.vertex_groups]
 def wsum(prefixes):
@@ -508,28 +758,36 @@ over = [Vector((p0[0] - 0.005, 0.01, p0[2] + 0.02))]
 front = []
 for t in np.linspace(0.08, 1.0, 18):
     x = p0[0] + (end[0] - p0[0]) * t; z = p0[2] + (end[2] - p0[2]) * t
-    sp = surface(x, z, 0.018 + 0.01 * math.sin(math.pi * t))
+    sp = surface(x, z, 0.022 + 0.012 * math.sin(math.pi * t))
     if sp is not None: front.append(sp)
-print('[himation] front points', len(front))
 pts = back + over + front
 cu = bpy.data.curves.new('himation_c', 'CURVE'); cu.dimensions = '3D'
 cu.bevel_mode = 'OBJECT'
-prof = bpy.data.curves.new('him_prof', 'CURVE'); ps = prof.splines.new('BEZIER'); ps.bezier_points.add(7)
-for i, bp in enumerate(ps.bezier_points):   # a flattened, folded cross-section
-    a_ = 2 * math.pi * i / 8; rr = 1 + 0.18 * math.cos(3 * a_)
-    bp.co = (0.075 * rr * math.cos(a_), 0.022 * rr * math.sin(a_), 0); bp.handle_left_type = bp.handle_right_type = 'AUTO'
-ps.use_cyclic_u = True; prof.resolution_u = 8
+prof = bpy.data.curves.new('him_prof', 'CURVE'); ps = prof.splines.new('POLY'); NPF = 56; ps.points.add(NPF - 1)
+def _him_prof(pleat):
+    for i, pp in enumerate(ps.points):   # a pleated cross-section: broad folds across the width
+        a_ = 2 * math.pi * i / NPF; x_ = 0.088 * math.cos(a_)
+        y_ = 0.013 * math.sin(a_) + pleat * 0.017 * math.sin(3.4 * math.pi * x_ / 0.088 + 0.5) * (1 - 0.3 * abs(x_) / 0.088)
+        pp.co = (x_, y_, 0, 1)
+_him_prof(0.0)
+ps.use_cyclic_u = True
 pob = bpy.data.objects.new('him_prof', prof); link(pob); pob.hide_render = True
 cu.bevel_object = pob; cu.use_fill_caps = True
 sp = cu.splines.new('NURBS'); sp.points.add(len(pts) - 1)
 for i, (p_, v) in enumerate(zip(sp.points, pts)):
-    p_.co = (*v, 1); p_.tilt = 0.6 * math.sin(i * 0.9)
+    p_.co = (*v, 1); p_.tilt = 0.5 * math.sin(i * 0.9)
 sp.order_u = 4; sp.use_endpoint_u = True; cu.resolution_u = 12; cu.twist_mode = 'MINIMUM'
 him_c = bpy.data.objects.new('himation_c', cu); link(him_c)
 him_c.matrix_world = Matrix.Identity(4)
 bpy.context.view_layer.update()
 dg_ = bpy.context.evaluated_depsgraph_get()
+hm_flat = bpy.data.meshes.new_from_object(him_c.evaluated_get(dg_))
+_him_prof(1.0); prof.update_tag(); him_c.data.update_tag(); bpy.context.view_layer.update(); dg_ = bpy.context.evaluated_depsgraph_get()
 hm = bpy.data.meshes.new_from_object(him_c.evaluated_get(dg_))
+nring = len(hm.vertices) // NPF
+for i, (vf, vp) in enumerate(zip(hm_flat.vertices, hm.vertices)):   # flat over the shoulder, folded down the chest
+    k_ = smoothstep(0.1, 0.32, (i // NPF) / max(1, nring - 1)) * 0.85 + 0.15
+    vp.co = Vector(vf.co).lerp(Vector(vp.co), k_)
 prof_pts = [Vector(v.co) for v in bpy.data.meshes.new_from_object(pob.evaluated_get(dg_)).vertices]
 NP_ = len(prof_pts)
 assert len(hm.vertices) % NP_ == 0, (len(hm.vertices), NP_)
@@ -542,9 +800,19 @@ for p in hm.polygons: p.use_smooth = True
 parent_head(him, 'spine02')
 print('[himation] mesh', len(hm.vertices), 'verts,', NP_, 'per ring')
 
-# ---------------------------------------------------------------- arms: IK to animated targets
+# ---------------------------------------------------------------- the rig: IK arms, posing helpers
+# Posing reads only bone matrices, so modifiers are off in the viewport depsgraph while posing (renders use
+# their render settings): the frequent view-layer updates stay cheap.
+def viewport_mods(on):
+    for o in [body] + EXTRA:
+        for md in o.modifiers: md.show_viewport = on
+
+
 def empty(name):
     e = bpy.data.objects.new(name, None); link(e); return e
+
+
+def upd(): bpy.context.view_layer.update()
 
 
 IKT = {s: empty('ik_' + s) for s in 'LR'}
@@ -552,29 +820,135 @@ POLE = {s: empty('pole_' + s) for s in 'LR'}
 for s in 'LR':
     c = PB['lowerarm02.' + s].constraints.new('IK'); c.target = IKT[s]; c.chain_count = 4
     c.pole_target = POLE[s]; c.pole_angle = math.radians(-90)
-    PB['wrist.' + s].rotation_mode = 'XYZ'
-for b in PB: b.rotation_mode = 'XYZ'
+FINGER = [b.name for b in PB if b.name.startswith('finger')]
+for b in PB: b.rotation_mode = 'XYZ' if b.name in FINGER else 'QUATERNION'
+MW = rig.matrix_world
+SIDE_X = {'L': 1, 'R': -1}
 
 
-def grip(side, amount):
+def rot(bone, axis, deg):
+    """Turn a bone about an armature-space axis (x: his left, -y: his front, z: up), on top of its pose.
+    Positive about x bends forward / opens the jaw / looks down; about z turns to his left; about y leans left."""
+    pb = PB[bone]; B3 = rig.data.bones[bone].matrix_local.to_3x3()
+    q = Quaternion((B3.inverted() @ Vector(axis)).normalized(), math.radians(deg))
+    pb.rotation_quaternion = q @ pb.rotation_quaternion
+
+
+def nudge(bone, delta):
+    """Move an unconnected bone by `delta` (armature space, rig metres)."""
+    PB[bone].location = PB[bone].location + rig.data.bones[bone].matrix_local.to_3x3().inverted() @ Vector(delta)
+
+
+def wpos(bone, tail=False):
+    pb = PB[bone]; return MW @ (pb.tail if tail else pb.head)
+
+
+def hand_frame(side):
+    """World matrix of the palm: origin on the palm, Y along the fingers, Z out of the palm, X = Y x Z."""
+    wr = wpos('wrist.' + side)
+    k2, k5, k3 = wpos('finger2-1.' + side), wpos('finger5-1.' + side), wpos('finger3-1.' + side)
+    yv = (k3 - wr).normalized(); xv = (k2 - k5).normalized()
+    zv = -yv.cross(xv).normalized() * (1 if side == 'R' else -1)
+    xv = yv.cross(zv).normalized()
+    o = wr.lerp(k3, 0.55) + zv * 0.012 * S
+    M = Matrix((xv, yv, zv)).transposed().to_4x4(); M.translation = o
+    return M
+
+
+def palm_n(side): return hand_frame(side).col[2].xyz
+def finger_dir(side): return hand_frame(side).col[1].xyz
+
+
+def fist_point(side):
+    """World point in the middle of the closed fist: the centre of the loop each curled finger makes
+    (knuckle, middle joints, fingertip), for the index to little fingers."""
+    pts = []
+    for f in (2, 3, 4, 5):
+        pts += [wpos(f'finger{f}-1.{side}'), wpos(f'finger{f}-2.{side}'), wpos(f'finger{f}-3.{side}'), wpos(f'finger{f}-3.{side}', True)]
+    return sum(pts, Vector()) / len(pts)
+
+
+def fist_axis(side):
+    """World direction through the fist, from the little finger's side to the index finger's."""
+    return (wpos(f'finger2-1.{side}') - wpos(f'finger5-1.{side}')).normalized()
+
+
+def turn_wrist(side, q):
+    wb = PB['wrist.' + side]; piv = MW @ wb.head
+    Rw = Matrix.Translation(piv) @ q.to_matrix().to_4x4() @ Matrix.Translation(-piv)
+    wb.matrix = MW.inverted() @ Rw @ MW @ wb.matrix
+
+
+def align_wrist(side, vec_fn, want, turns=3, amount=1.0):
+    """Turn the wrist (from its IK-given pose) so vec_fn(side) points along `want`."""
+    for _ in range(turns):
+        upd(); q = vec_fn(side).rotation_difference(Vector(want).normalized())
+        if amount < 1: q = Quaternion().slerp(q, amount)
+        turn_wrist(side, q)
+    upd()
+
+
+def clavicle_follow(side, tgt):
+    """The shoulder girdle follows the hand: up when the hand is high, forward when it reaches in front."""
+    sh = MW @ rig.data.bones['shoulder01.' + side].head_local
+    rel = (tgt - sh) / (0.55 * S); sx = SIDE_X[side]
+    elev = max(-0.3, min(1.2, rel.z + 0.25)); fwd = max(0.0, min(1.0, -rel.y - 0.1)); across = max(0.0, min(1.0, -sx * rel.x))
+    rot('clavicle.' + side, (0, 1, 0), -sx * 16 * elev)
+    rot('clavicle.' + side, (0, 0, 1), -sx * (7 * fwd + 6 * across))
+
+
+def set_pole(side, off):
+    sh = MW @ rig.data.bones['upperarm01.' + side].head_local
+    POLE[side].location = sh + Vector((SIDE_X[side] * off[0], off[1], off[2]))
+
+
+def place_palm(side, want, face=None, along=None, iters=3, wrist_amount=1.0):
+    """Move the hand (IK) so the palm's centre is at `want`, turning the wrist so the palm faces `face`
+    and/or the fingers point `along` (each optional)."""
+    want = Vector(want)
+    if not hasattr(place_palm, 'off'): place_palm.off = {}
+    off = place_palm.off.get(side, Vector((0, 0, 0)))
+    IKT[side].location = want - off
+    for _ in range(iters):
+        upd()
+        if face is not None: align_wrist(side, palm_n, face, 2, wrist_amount)
+        if along is not None: align_wrist(side, finger_dir, along, 2, wrist_amount)
+        err = want - hand_frame(side).translation
+        IKT[side].location = IKT[side].location + err
+    upd()
+    place_palm.off[side] = want - IKT[side].location
+
+
+def grip(side, amount, thumb=None):
     """Curl the fingers; 0 open, 1 a firm grip."""
+    th = amount if thumb is None else thumb
     for f in range(1, 6):
         for j in (1, 2, 3):
             nme = f'finger{f}-{j}.{side}'
             if nme in PB:
-                k = (0.55 if f == 1 else 1.0) * amount
-                PB[nme].rotation_euler = (math.radians(55 * k if j > 1 or f > 1 else 20 * k), 0, 0)
+                k = (0.5 * th) if f == 1 else amount * (1.0 + 0.08 * (f - 2))
+                PB[nme].rotation_euler = (math.radians((55 if j > 1 or f > 1 else 20) * k), 0, 0)
 
 
-def wpt(x, y, d):    # a world point from world units and depth (Blender units)
-    return P(x, y, d)
+def hold_axis(side, tip, root, offset=0.0, turns=4):
+    """Turn the wrist so the fist's axis lines up with a staff or bottle neck, then run it from `tip` (its lower
+    end's aim, e.g. in the glass) up through the middle of the fist. offset moves the object along its axis."""
+    for _ in range(turns):
+        upd()
+        up = (fist_point(side) - tip).normalized()
+        turn_wrist(side, fist_axis(side).rotation_difference(up))
+    upd()
+    g = fist_point(side); ax = (g - tip).normalized()
+    root.matrix_world = axis_matrix(tip + ax * offset, ax) @ Matrix.Diagonal((*root.scale, 1))
+    upd()
+    return math.degrees(fist_axis(side).angle(ax))
 
 
-# shoulders in world, for sensible pole placement
-def place_poles():
-    for s, sx in (('L', 1), ('R', -1)):
-        sh = rig.matrix_world @ rig.data.bones['upperarm01.' + s].head_local
-        POLE[s].location = sh + Vector((sx * 2.2, 3.0, -2.0))    # elbows out and back
+def axis_matrix(origin, axis, up=Vector((0, -1, 0))):
+    z = Vector(axis).normalized(); x = up.cross(z)
+    if x.length < 1e-4: x = Vector((1, 0, 0))
+    x.normalize(); y = z.cross(x)
+    M = Matrix((x, y, z)).transposed().to_4x4(); M.translation = origin; return M
 
 
 def world_units(pt):
@@ -587,296 +961,658 @@ def world_units(pt):
 
 def head_rect():
     """World rect of his head (hair, face, wreath), for the speech bubble."""
-    x0, y0, x1, y1 = bbox_world([cap], 0)
+    x0, y0, x1, y1 = bbox_world([cap, wreath], 0)
     return [round(x0), round(y0), round(x1 - x0), round((y1 - y0) * 1.25)]
 
 
-# ---------------------------------------------------------------- props (rendered with him)
-M_GLASS = mat('dio_glass', '#e9e4da', 0.08, coat=1.0)
-M_CLOTH = mat('fawn', '#b98552', 0.8)
-M_WOOD = mat('thyrsus_wood', '#7a5530', 0.55)
-M_CONE = mat('pinecone', '#5b7a2e', 0.6)
-M_STEEL = mat('shaker', '#c9a24a', 0.22, 1.0)
-M_BOTTLE = mat('dio_bottle', '#b8661c', 0.3, coat=0.3)
-M_LABEL = mat('dio_label', '#f1e6cf', 0.7)
+# ---------------------------------------------------------------- keyframes
+def track(t, keys, cyc=True):
+    """Smooth (Hermite) interpolation through keys [(time 0..1, value[, 'h'])]; 'h' marks a key he settles on
+    (zero velocity). Cyclic tracks wrap at 1."""
+    n = len(keys); ts = [k[0] for k in keys]; vs = [np.atleast_1d(np.array(k[1], float)) for k in keys]
+    hold = [len(k) > 2 and k[2] == 'h' for k in keys]
+    if cyc:
+        tim = lambda j: ts[j % n] + (j // n); val = lambda j: vs[j % n]; hd = lambda j: hold[j % n]
+        tt = t % 1.0
+        if tt < ts[0]: tt += 1
+        i = 0
+        while tim(i + 1) <= tt: i += 1
+    else:
+        tim = lambda j: ts[max(0, min(n - 1, j))]; val = lambda j: vs[max(0, min(n - 1, j))]
+        hd = lambda j: hold[max(0, min(n - 1, j))] or j <= 0 or j >= n - 1
+        tt = max(ts[0], min(ts[-1], t)); i = 0
+        while i < n - 2 and ts[i + 1] <= tt: i += 1
+    t0, t1 = tim(i), tim(i + 1); h = max(1e-6, t1 - t0); u = (tt - t0) / h
+    def tan(j):
+        if hd(j): return 0 * vs[0]
+        dt_ = tim(j + 1) - tim(j - 1)
+        return (val(j + 1) - val(j - 1)) / dt_ if dt_ > 1e-6 else 0 * vs[0]
+    m0, m1 = tan(i), tan(i + 1)
+    out = (2 * u ** 3 - 3 * u ** 2 + 1) * val(i) + (u ** 3 - 2 * u ** 2 + u) * h * m0 + (-2 * u ** 3 + 3 * u ** 2) * val(i + 1) + (u ** 3 - u ** 2) * h * m1
+    return float(out[0]) if out.size == 1 else out
 
 
-def prop_glass():
-    g_ = lathe('p_glass', [(0, 0), (0, 0.2), (0.02, 0.22), (0.48, 0.23), (0.5, 0.215), (0.04, 0.19)], M_GLASS, 32)
-    return [g_]
+def bump(t, a, b):
+    """0 outside [a, b], a smooth hump to 1 in its middle."""
+    if t <= a or t >= b: return 0.0
+    return math.sin(math.pi * (t - a) / (b - a)) ** 2
 
 
-def prop_cloth():
-    bpy.ops.mesh.primitive_uv_sphere_add(radius=0.09, segments=16, ring_count=8); c = bpy.context.active_object
-    c.scale = (1.0, 0.7, 0.55); c.data.materials.append(M_CLOTH); smooth(c)
-    d = c.modifiers.new('d', 'DISPLACE'); t = bpy.data.textures.new('crumple', 'CLOUDS'); t.noise_scale = 0.05; d.texture = t; d.strength = 0.03
-    return [c]
+# ---------------------------------------------------------------- body: spine, head, breath, face
+def body_pose(bend=0.0, twist=0.0, lean=0.0, pitch=0.0, yaw=0.0, roll=0.0, breath=0.0):
+    """bend forward, twist to his left, lean to his left (degrees, spread over the spine); head pitch (down +),
+    yaw (to his left +), roll (to his left shoulder +), spread over neck and head; breath 0..1."""
+    for b_, k in (('spine05', 0.15), ('spine04', 0.25), ('spine03', 0.3), ('spine02', 0.3)):
+        rot(b_, (1, 0, 0), bend * k); rot(b_, (0, 0, 1), twist * k); rot(b_, (0, 1, 0), lean * k)
+    rot('spine02', (1, 0, 0), -1.4 * breath); rot('spine01', (1, 0, 0), -0.6 * breath)
+    for b_, k in (('neck01', 0.2), ('neck02', 0.25), ('neck03', 0.15), ('head', 0.4)):
+        rot(b_, (1, 0, 0), pitch * k); rot(b_, (0, 0, 1), yaw * k); rot(b_, (0, 1, 0), roll * k)
 
 
-def prop_thyrsus():
-    """Origin at the staff's lower end (in the glass); held about 0.75 up, the pine cone 1.35 above the hand."""
-    o_ = 0.78
-    st = lathe('p_staff', [(0.0, 0.0), (0.0, 0.02), (0.01, 0.025), (1.35 + o_, 0.025)], M_WOOD, 16)
-    cone = lathe('p_cone', [(z_ + o_, r_) for z_, r_ in ((1.3, 0.0), (1.33, 0.07), (1.45, 0.095), (1.58, 0.07), (1.66, 0.02), (1.68, 0))], M_CONE, 24)
-    cone.parent = st
-    for i in range(4):   # ribbons of ivy under the cone
-        bpy.ops.mesh.primitive_uv_sphere_add(radius=0.04, segments=12, ring_count=6, location=(0.05 * math.cos(i * 1.6), 0.05 * math.sin(i * 1.6), 1.26 + o_ - i * 0.03))
-        lf = bpy.context.active_object; lf.scale = (1, 0.35, 0.7); lf.data.materials.append(M_IVY); smooth(lf); lf.parent = st
-    return [st, cone] + [o for o in bpy.data.objects if o.parent == st and o not in (cone,)]
-
-
-def prop_bottle():
-    b_ = lathe('p_bottle', [(0, 0), (0, 0.2), (0.03, 0.24), (0.52, 0.24), (0.64, 0.15), (0.72, 0.07), (0.96, 0.07), (0.97, 0)], M_BOTTLE, 32)
-    lb = lathe('p_label', [(0.2, 0.243), (0.42, 0.243)], M_LABEL, 32); lb.parent = b_
-    return [b_, lb]
-
-
-def prop_shaker():
-    s_ = lathe('p_shaker', [(0, 0), (0, 0.16), (0.04, 0.17), (0.5, 0.22), (0.52, 0.2), (0.62, 0.18), (0.66, 0.12), (0.72, 0.1), (0.74, 0)], M_STEEL, 32)
-    return [s_]
-
-
-def hand_frame(side):
-    """World matrix of the palm: origin at the palm, Y along the fingers, Z out of the palm."""
-    pb = rig.pose.bones; m = rig.matrix_world
-    wr = m @ pb['wrist.' + side].head
-    k2, k5 = m @ pb['finger2-1.' + side].head, m @ pb['finger5-1.' + side].head
-    k3 = m @ pb['finger3-1.' + side].head
-    yv = (k3 - wr).normalized(); xv = (k2 - k5).normalized()
-    zv = yv.cross(xv).normalized() * (1 if side == 'R' else -1)
-    xv = zv.cross(yv).normalized()
-    o = wr.lerp(k3, 0.55) + zv * 0.022 * S
-    M = Matrix((xv, yv, zv)).transposed().to_4x4(); M.translation = o
-    return M
-
-
-def attach(objs, side, local):
-    """Put a prop in the hand: `local` is its matrix in the palm frame (rig-scale units), parented to the wrist."""
-    bpy.context.view_layer.update()
-    M = hand_frame(side) @ local          # props are modelled in world (Blender) units
-    root = objs[0]
-    root.parent = rig; root.parent_type = 'BONE'; root.parent_bone = 'wrist.' + side
-    bpy.context.view_layer.update()
-    root.matrix_world = M
-    return objs
-
-
-# ---------------------------------------------------------------- loops
-CX = 800
-COUNTER = G['MAN']['counterBackY'] if 'MAN' in G else 631
+def face(smile=0.0, open_=0.0, brow=(0.0, 0.0), wink=(0.0, 0.0), look=(0.0, 0.0), squint=0.0):
+    """Expression from the default rig's face bones (MPFB ships no expression data). smile 0..1 (a warm
+    closed-to-open smile), open_ 0..1 (jaw), brow (left, right) raise 0..1, wink (left, right) 0..1,
+    look (yaw to his left, pitch up) degrees for the eyes, squint 0..1 (lower lids up, as in a real smile)."""
+    pass
 
 
 def rest_pose():
     for b in PB:
-        b.rotation_euler = (0, 0, 0); b.location = (0, 0, 0)
-    place_poles()
+        b.rotation_euler = (0, 0, 0); b.rotation_quaternion = (1, 0, 0, 0); b.location = (0, 0, 0); b.scale = (1, 1, 1)
+    for s in 'LR': set_pole(s, (2.0, 2.2, -3.2))
 
 
-def set_hands(L, R):
-    IKT['L'].location = wpt(*L); IKT['R'].location = wpt(*R)
+# ---------------------------------------------------------------- props (rendered with him)
+def pmat(name, *a, **k):
+    m_ = mat(name, *a, **k); return m_
 
 
-def look(yaw=0, pitch=0, roll=0):
-    PB['head'].rotation_euler = (math.radians(pitch), math.radians(roll), math.radians(yaw))
-    PB['neck02'].rotation_euler = (math.radians(pitch * 0.4), 0, math.radians(yaw * 0.4))
+M_GLASS = glass_material()
+M_CLOTH = fawn_material()
+M_STEEL = mat('shaker', '#c9a24a', 0.22, 1.0)
+M_STEEL2 = mat('shaker_cap', '#b08a3a', 0.3, 1.0)
+M_BOTTLE = mat('dio_bottle', '#7a3612', 0.18, coat=0.6)
+M_BOTTLE2 = mat('dio_bottle2', '#2f4a2a', 0.18, coat=0.6)
+M_LABEL = mat('dio_label', '#f1e6cf', 0.7)
+M_CORK = mat('dio_cork', '#c9a24a', 0.35, 0.8)
+M_HONEYD = mat('honey_drip', '#d98a12', 0.08, coat=1.0)
+M_HONEYD.node_tree.nodes['Principled BSDF'].inputs['Transmission Weight'].default_value = 0.35
+M_POUR = mat('pour_stream', '#c8741a', 0.05, coat=1.0)
+M_POUR.node_tree.nodes['Principled BSDF'].inputs['Transmission Weight'].default_value = 0.5
+if FINISH == 'white':
+    M_WOOD = M_CONE = M_SCALE = M_RIBBON = M_RIBBON2 = marble_material('thyrsus_white', paint=False, lo='#bcc7d4', hi='#e4ecf5', ao=0.5, ao_dist=0.08)
+    M_TIVY = (M_WOOD, M_WOOD)
+else:
+    M_WOOD = mat('thyrsus_wood', '#6e4a28', 0.55)
+    M_CONE = mat('pinecone', '#4d3016', 0.6)
+    M_SCALE = mat('pinescale', '#9c6c2a', 0.42, 0.25)
+    M_RIBBON = mat('ribbon', '#8e2a22', 0.6); M_RIBBON2 = mat('ribbon2', '#2f5a32', 0.6)
+    M_TIVY = (M_IVY, M_IVY2)
 
 
-def ease(t): return 0.5 - 0.5 * math.cos(math.pi * t)
+GLASS_R = 0.225
+CUP_S = 1.3
+def prop_glass():
+    """His kantharos (Q9+), in gold-tinted glass (transmissive; the film lets the bar show through it): a deep
+    bowl on a short stem and foot, with two tall loop handles. Origin at the foot."""
+    g_ = lathe('p_glass', [(0, 0), (0, 0.12), (0.025, 0.13), (0.045, 0.045), (0.15, 0.04), (0.19, 0.075), (0.27, 0.17), (0.37, 0.215),
+                           (0.5, GLASS_R), (0.512, 0.212), (0.37, 0.2), (0.27, 0.155), (0.21, 0.07)], M_GLASS, 40)
+    smooth(g_)
+    for sx in (-1, 1):
+        pts_ = [Vector((sx * x_, 0, z_)) for x_, z_ in ((0.205, 0.46), (0.25, 0.56), (0.32, 0.6), (0.37, 0.55), (0.36, 0.42), (0.3, 0.32), (0.235, 0.27))]
+        h_ = curve_tube('p_handle', pts_, 0.022, None, M_GLASS, 3); h_.parent = g_
+    g_.scale = (CUP_S, CUP_S, CUP_S)
+    return g_
 
 
-DH = -1.2   # hand depth: over the counter, well in front of his chest (about -0.6)
+def prop_thyrsus():
+    """Origin at the staff's lower end; held about 0.8 up, the pine cone 1.15 above the hand. Returns the staff
+    (the root); cone, scales, ribbons and ivy are parented to it."""
+    o_ = 0.8; Lh = 1.15; R_ = 0.04
+    st = lathe('p_staff', [(0.0, 0.0), (0.0, 0.032), (0.02, R_), (Lh + o_, R_ * 0.9)], M_WOOD, 16); smooth(st)
+    zc0 = Lh + o_ - 0.06
+    prof = [(0.0, 0.0), (0.02, 0.06), (0.08, 0.098), (0.18, 0.108), (0.28, 0.088), (0.36, 0.05), (0.42, 0.0)]
+    cone = lathe('p_cone', [(zc0 + z, r_) for z, r_ in prof], M_CONE, 24); smooth(cone); cone.parent = st
+    bm = bmesh.new(); n = 96; ga = math.pi * (3 - math.sqrt(5))
+    zs, rs = [p_[0] for p_ in prof], [p_[1] for p_ in prof]
+    for i in range(n):
+        f = (i + 0.5) / n; z = 0.03 + 0.37 * f
+        rr = float(np.interp(z, zs, rs)); a_ = i * ga
+        er = Vector((math.cos(a_), math.sin(a_), 0)); et = Vector((-math.sin(a_), math.cos(a_), 0)); ez = Vector((0, 0, 1))
+        size = 0.03 * (0.55 + 0.6 * math.sin(math.pi * min(1.0, f * 1.05)))
+        R3 = Matrix((et, ez, er)).transposed() @ Matrix.Rotation(math.radians(-35), 3, 'X')
+        M = Matrix.Translation(Vector((0, 0, zc0 + z)) + er * (rr * 0.92)) @ R3.to_4x4() @ Matrix.Diagonal((size * 0.95, size * 1.15, size * 0.42, 1))
+        bmesh.ops.create_icosphere(bm, subdivisions=2, radius=1.0, matrix=M)
+    sc = bm_object('p_scales', bm, [M_SCALE], subd=0); sc.parent = st
+    # a red fillet wound round the staff under the cone, its two ends hanging, and an ivy vine with leaves
+    rb = bmesh.new()
+    rows = []
+    for i in range(60):
+        f = i / 59; a_ = 2.6 * 2 * math.pi * f; z = zc0 - 0.32 + 0.3 * f
+        c = Vector((math.cos(a_) * (R_ + 0.006), math.sin(a_) * (R_ + 0.006), z))
+        rows.append((c, Vector((math.cos(a_), math.sin(a_), 0)), Vector((0, 0, 1)), 0.03, 0.005))
+    sweep_bm(rb, rows, ring=8)
+    for k, a0 in enumerate((0.3, 1.2)):
+        rows = []
+        for i in range(24):
+            f = i / 23; er = Vector((math.cos(a0), math.sin(a0), 0))
+            c = Vector((0, 0, zc0 - 0.33)) + er * (R_ + 0.01 + 0.09 * f) + Vector((0, 0, -0.34 * f)) \
+                + Vector((-math.sin(a0), math.cos(a0), 0)) * (0.025 * math.sin(f * 7 + k))
+            rows.append((c, Vector((-math.sin(a0), math.cos(a0), 0)), er.cross(Vector((0, 0, 1))).cross(er).normalized(), 0.028 * (1 - 0.3 * f), 0.005))
+        sweep_bm(rb, rows, ring=8)
+    rib = bm_object('p_ribbon', rb, [M_RIBBON], subd=0); rib.parent = st
+    lb = bmesh.new()
+    for k in range(5):
+        a_ = k * 2.4; z = zc0 - 0.05 - 0.07 * k
+        er = Vector((math.cos(a_), math.sin(a_), 0)); et = Vector((-math.sin(a_), math.cos(a_), 0))
+        R3 = Matrix((et, er, Vector((0, 0, 1)))).transposed() @ Matrix.Rotation(math.radians(-60), 3, 'X')
+        ivy_leaf(lb, Matrix.Translation(Vector((0, 0, z)) + er * R_) @ R3.to_4x4(), 0.13, k % 2, thick=0.06)
+    lv = bm_object('p_tivy', lb, list(M_TIVY), subd=0); lv.parent = st
+    return st
 
 
-def L_polish(t):   # glass in the left hand, the fawn-skin cloth circling inside it
+def prop_bottle(name='p_bottle', r0=0.17, h=1.25, m_=None):
+    """A wine bottle: body, shoulder, neck (held at the neck's base, about 0.95 up), a gold cap and a label."""
+    k = h / 1.25
+    b_ = lathe(name, [(0, 0), (0, r0 * 0.9), (0.02 * k, r0), (0.74 * k, r0), (0.86 * k, r0 * 0.7), (0.95 * k, 0.065), (1.2 * k, 0.058),
+                      (1.22 * k, 0.07), (1.25 * k, 0.066), (1.25 * k, 0)], m_ or M_BOTTLE, 32); smooth(b_)
+    lb = lathe(name + '_label', [(0.22 * k, r0 + 0.004), (0.55 * k, r0 + 0.004)], M_LABEL, 32); lb.parent = b_
+    cp = lathe(name + '_cap', [(1.13 * k, 0.064), (1.26 * k, 0.072), (1.27 * k, 0)], M_CORK, 24); cp.parent = b_
+    return b_
+
+
+def prop_shaker():
+    """A two-part shaker: a tin and its cap. Origin at the bottom; about 0.9 tall."""
+    s_ = lathe('p_shaker', [(0, 0), (0, 0.15), (0.03, 0.165), (0.55, 0.205), (0.57, 0.21), (0.6, 0.195)], M_STEEL, 32); smooth(s_)
+    c_ = lathe('p_shaker_cap', [(0.56, 0.2), (0.62, 0.21), (0.72, 0.17), (0.8, 0.1), (0.86, 0.09), (0.9, 0.0)], M_STEEL2, 32); smooth(c_)
+    c_.parent = s_
+    return s_
+
+
+def remove_obj(name):
+    o = bpy.data.objects.get(name)
+    if o: bpy.data.objects.remove(o, do_unlink=True)
+
+
+def cloth_mesh(wad_lo, wad_hi, anchor, out, size=1.0):
+    """The fawn skin, rebuilt every frame in world space: a crumpled wad pushed into the glass (from wad_lo,
+    in the glass, up to wad_hi, in his fist) and a flap hanging from his hand over the rim and down outside."""
+    remove_obj('p_cloth')
+    bm = bmesh.new(); uv = bm.loops.layers.uv.new()
+    ax = (wad_hi - wad_lo); ln_ = ax.length; ax.normalize()
+    ex = ax.cross(Vector((0, 0, 1)) if abs(ax.z) < 0.9 else Vector((1, 0, 0))).normalized(); ey = ax.cross(ex)
+    NU, NV = 14, 9; grid = []
+    for i in range(NV):
+        v_ = i / (NV - 1); row = []
+        for j in range(NU):
+            a_ = 2 * math.pi * j / NU
+            rr = (0.1 + 0.03 * math.sin(3 * a_ + 5 * v_) + 0.02 * math.sin(7 * a_ - 3 * v_)) * size * (0.75 + 0.35 * math.sin(math.pi * v_))
+            row.append(bm.verts.new(wad_lo + ax * (ln_ * v_ - 0.04) + (ex * math.cos(a_) + ey * math.sin(a_)) * rr))
+        grid.append(row)
+    for i in range(NV - 1):
+        for j in range(NU):
+            f = bm.faces.new((grid[i][j], grid[i][(j + 1) % NU], grid[i + 1][(j + 1) % NU], grid[i + 1][j]))
+            for lp, (uu, vv) in zip(f.loops, ((j, i), (j + 1, i), (j + 1, i + 1), (j, i + 1))): lp[uv].uv = (uu / NU * 0.6, vv / NV * 0.4)
+    for rowi, sgn in ((0, -1), (NV - 1, 1)):
+        cv = bm.verts.new(wad_lo + ax * (-0.06 if sgn < 0 else ln_ + 0.02))
+        for j in range(NU): bm.faces.new((grid[rowi][(j + 1) % NU], grid[rowi][j], cv) if sgn < 0 else (grid[rowi][j], grid[rowi][(j + 1) % NU], cv))
+    # the flap: out over the rim, then down, with a few broad folds
+    out = Vector((out.x, out.y, 0)).normalized(); side_ = Vector((0, 0, 1)).cross(out).normalized()
+    FU, FV = 9, 12; fl = []
+    for i in range(FV):
+        v_ = i / (FV - 1); row = []
+        for j in range(FU):
+            u_ = j / (FU - 1) - 0.5
+            w_ = (0.22 + 0.16 * v_) * size
+            p_ = anchor + out * (0.16 * size * smoothstep(0, 0.35, v_) + 0.035 * math.sin(u_ * 2.6 * math.pi + v_ * 2.0)) \
+                + side_ * (u_ * w_) + Vector((0, 0, -0.55 * size * v_ + 0.06 * size * (1 - smoothstep(0, 0.3, v_))))
+            row.append(bm.verts.new(p_))
+        fl.append(row)
+    for i in range(FV - 1):
+        for j in range(FU - 1):
+            f = bm.faces.new((fl[i][j], fl[i][j + 1], fl[i + 1][j + 1], fl[i + 1][j]))
+            for lp, (uu, vv) in zip(f.loops, ((j, i), (j + 1, i), (j + 1, i + 1), (j, i + 1))): lp[uv].uv = (0.5 + uu / FU * 0.5, vv / FV)
+    me = bpy.data.meshes.new('p_cloth'); bm.to_mesh(me); bm.free()
+    ob = bpy.data.objects.new('p_cloth', me); link(ob); me.materials.append(M_CLOTH)
+    for p in me.polygons: p.use_smooth = True
+    so = ob.modifiers.new('sol', 'SOLIDIFY'); so.thickness = 0.012
+    sd_ = ob.modifiers.new('sub', 'SUBSURF'); sd_.levels = 1; sd_.render_levels = 1
+    return ob
+
+
+def cloth_bunch(palm, pn, fd):
+    """The fawn skin, rebuilt every frame: a crumpled bunch between his right palm (centre `palm`, palm normal
+    `pn`, fingers along `fd`) and the bowl, and its tail hanging from the bottom of his hand in soft folds."""
+    remove_obj('p_cloth')
+    bm = bmesh.new(); uv = bm.loops.layers.uv.new()
+    ac = pn.cross(fd).normalized(); c0 = palm + pn * 0.03
+    NU, NV = 16, 9; grid = []
+    for i in range(NV):
+        v_ = i / (NV - 1); row = []
+        for j in range(NU):
+            a_ = 2 * math.pi * j / NU; b_ = math.pi * (v_ - 0.5)
+            k_ = 1 + 0.16 * math.sin(3 * a_ + 4 * v_) + 0.1 * math.sin(5 * a_ - 2 * v_ + 1)
+            p_ = c0 + (fd * (0.13 * math.cos(b_) * math.cos(a_)) + ac * (0.1 * math.cos(b_) * math.sin(a_)) + pn * (0.04 * math.sin(b_))) * k_
+            row.append(bm.verts.new(p_))
+        grid.append(row)
+    for i in range(NV - 1):
+        for j in range(NU):
+            f = bm.faces.new((grid[i][j], grid[i][(j + 1) % NU], grid[i + 1][(j + 1) % NU], grid[i + 1][j]))
+            for lp, (uu, vv) in zip(f.loops, ((j, i), (j + 1, i), (j + 1, i + 1), (j, i + 1))): lp[uv].uv = (uu / NU * 1.4, vv / NV * 0.7)
+    # the tail: from the bunch's lowest side, down, a little toward you, turning as it falls
+    low = min((c0 + fd * 0.12 * math.cos(a_) + ac * 0.1 * math.sin(a_) for a_ in np.linspace(0, 2 * math.pi, 24)), key=lambda q: q.z)
+    FU, FV = 8, 12; fl = []
+    for i in range(FV):
+        v_ = i / (FV - 1); row = []
+        tw = 0.6 * v_
+        across = Vector((math.cos(tw), -0.3 * math.sin(tw), 0)).normalized(); nrm = Vector((0, 0, 1)).cross(across)
+        for j in range(FU):
+            u_ = j / (FU - 1) - 0.5
+            p_ = low + Vector((0.04 * v_, -0.08 * v_, -0.5 * v_)) + across * (u_ * (0.1 + 0.14 * v_)) \
+                + nrm * (0.03 * math.sin(u_ * 2.6 * math.pi + v_ * 3) * (0.3 + v_))
+            row.append(bm.verts.new(p_))
+        fl.append(row)
+    for i in range(FV - 1):
+        for j in range(FU - 1):
+            f = bm.faces.new((fl[i][j], fl[i][j + 1], fl[i + 1][j + 1], fl[i + 1][j]))
+            for lp, (uu, vv) in zip(f.loops, ((j, i), (j + 1, i), (j + 1, i + 1), (j, i + 1))): lp[uv].uv = (0.4 + uu / FU * 0.6, 0.7 + vv / FV * 1.2)
+    me = bpy.data.meshes.new('p_cloth'); bm.to_mesh(me); bm.free()
+    ob = bpy.data.objects.new('p_cloth', me); link(ob); me.materials.append(M_CLOTH)
+    for p in me.polygons: p.use_smooth = True
+    so = ob.modifiers.new('sol', 'SOLIDIFY'); so.thickness = 0.012
+    sd_ = ob.modifiers.new('sub', 'SUBSURF'); sd_.levels = 1; sd_.render_levels = 1
+    return ob
+
+
+def honey_strand(name, pts_, r0, r1):
+    """A thread of honey (thin, glossy, amber) through pts_, tapering from r0 to r1, with a drop at its end."""
+    remove_obj(name); remove_obj(name + '_drop')
+    if len(pts_) < 2: return []
+    t_ = taper_curve('honey', [(0, 1), (0.6, 0.55), (1, r1 / r0)])
+    ob = curve_tube(name, pts_, r0, t_, M_HONEYD, 2)
+    bpy.ops.mesh.primitive_uv_sphere_add(radius=r0 * 1.6, segments=12, ring_count=8, location=pts_[-1] + Vector((0, 0, -r0 * 0.8)))
+    d_ = bpy.context.active_object; d_.name = name + '_drop'; d_.scale = (1, 1, 1.35); d_.data.materials.append(M_HONEYD); smooth(d_)
+    return [ob, d_]
+
+
+# ---------------------------------------------------------------- where things are on the counter (B's world units)
+CX = 800
+def _layers():
+    t_ = open(os.path.join(PROTO, 'layers.js'), encoding='utf8').read()
+    t_ = t_[t_.index('{'):]; depth = 0
+    for i, ch in enumerate(t_):
+        depth += ch == '{'; depth -= ch == '}'
+        if depth == 0: return json.loads(t_[:i + 1])
+LAY = _layers()
+HJ = LAY['touch']['honey']
+JAR_MOUTH = (HJ['x'] + HJ['w'] * 0.5, HJ['y'] + HJ['h'] * 0.295)   # the top of the jar's cloth cover, where the dipper comes out
+COUNTER_Y = LAY.get('counterBackY', 629.9)                          # the app clips him below this
+DRINK = (CX, COUNTER_Y + 10)                                         # app.js: the drink glass stands here (base centre), rim ~50 above
+D_HAND = -1.3                                                        # hands over the counter, in front of his chest
+print('[counter] jar mouth', tuple(round(v, 1) for v in JAR_MOUTH), 'clip', COUNTER_Y)
+
+
+def free_left(t, sway=0.0):
+    """His left hand at rest: hanging by his hip, below the counter's edge, fingers loosely curled."""
+    set_pole('L', (2.6, 1.6, -3.4))
+    tgt = S2W(CX + 118 + 3 * sway, 676, -0.62)
+    place_palm('L', tgt, face=Vector((-1, 0.1, 0.1)), along=Vector((0.1, -0.15, -1)), iters=2, wrist_amount=0.6)
+    grip('L', 0.35, 0.3)
+
+
+def held_axis_place(side, fist_at, tip, root, offset=0.0, iters=3):
+    """IK the hand so the middle of its fist is at fist_at, the fist turned along the object from `tip`."""
+    off = getattr(held_axis_place, 'off', {}).get(side, Vector((0, 0, 0)))
+    IKT[side].location = fist_at - off
+    for _ in range(iters):
+        upd()
+        for _ in range(2):
+            upd(); turn_wrist(side, fist_axis(side).rotation_difference((fist_point(side) - tip).normalized()))
+        upd(); IKT[side].location = IKT[side].location + (fist_at - fist_point(side))
+    ang = hold_axis(side, tip, root, offset)
+    held_axis_place.off = getattr(held_axis_place, 'off', {}); held_axis_place.off[side] = fist_at - IKT[side].location
+    return ang
+
+
+# ---------------------------------------------------------------- loops
+# Every loop poses the whole figure for t in [0, 1): spine, head, face, both arms (IK to the palm or the fist,
+# with the shoulder girdle following, the wrist turned to the task and elbow poles chosen per loop), and
+# places its props from the hands. Timing comes from keyframes with anticipation and settle (track()).
+def L_polish(t, pr):
+    """Idle (Q8 home): the glass upright on his left palm, his right hand rubbing round its outside with the
+    fawn skin; halfway through he glances up at you with a raised brow and a warm smile, then back to work."""
     a = 2 * math.pi * t
-    set_hands((CX + 40, 585, DH), (CX - 10 + 16 * math.cos(a), 560 + 12 * math.sin(a), DH - 0.15))
-    look(6 * math.sin(a * 0.5), 14, 0)
-    grip('L', 0.7); grip('R', 0.55)
+    up = track(t, [(0.0, 0), (0.3, 0, 'h'), (0.42, 1.0), (0.66, 1.0, 'h'), (0.8, 0), (0.99, 0, 'h')])
+    body_pose(bend=4 + 1.2 * math.sin(a), twist=-3 + 2 * math.sin(a + 0.4), lean=1.2 * math.sin(a + 1),
+              pitch=17 - 21 * up, yaw=-2 + 3 * math.sin(a) + 4 * up, roll=2 + 5 * up, breath=0.5 + 0.5 * math.sin(a))
+    face(smile=0.45 + 0.4 * up, brow=(0.75 * up, 0.2 * up), look=(4 * up, 14 * up - 6 * (1 - up)), squint=0.25 + 0.25 * up)
+    fist = S2W(CX + 70 + 3 * math.sin(a + 0.5), 590 + 2 * math.cos(a), D_HAND - 0.1)
+    clavicle_follow('L', fist)
+    set_pole('L', (2.6, 1.2, -3.6)); set_pole('R', (2.6, 1.0, -3.2))
+    up_ = Vector((0.05 * math.sin(a), -0.32, 1)).normalized()       # the cup tipped a little toward you
+    grip('L', 0.85, 0.7)
+    held_axis_place('L', fist, fist - up_ * 0.09 * CUP_S, pr['glass'])
+    gl = pr['glass']; n = (gl.matrix_world.to_3x3() @ Vector((0, 0, 1))).normalized(); base = gl.matrix_world.translation
+    fr = (Vector((0, -1, 0)) - n * n.dot(Vector((0, -1, 0)))).normalized(); sd = n.cross(fr).normalized()
+    if sd.x > 0: sd = -sd                                            # toward his right
+    th = 1.35 + 0.3 * math.sin(a)                                     # on the bowl's outer side, rubbing round toward the front
+    rad = fr * math.cos(th) + sd * math.sin(th)
+    hgt = (0.34 + 0.05 * math.cos(a)) * CUP_S
+    rp = base + n * hgt + rad * (GLASS_R * CUP_S + 0.075)
+    clavicle_follow('R', rp)
+    tang = n.cross(rad).normalized()
+    place_palm('R', rp, face=-rad, along=n * 0.6 - tang * 0.6, wrist_amount=0.9)
+    grip('R', 0.35, 0.3); upd()
+    hf = hand_frame('R')
+    cloth_bunch(hf.translation, hf.col[2].xyz, hf.col[1].xyz)
 
 
-def L_stir(t):     # the thyrsus as a bar spoon: small circles in the glass on the counter
+def L_stir(t, pr):
+    """Recipe step (thyrsus): the thyrsus as a bar spoon, its lower end in the glass on the counter, his fist
+    circling above it, the pine cone leaning out to his right, away from his face. Two stirs a loop; at the
+    end of each loop (and the still he waits on, frame 0) a delighted look up at you."""
+    a = 2 * math.pi * t * 2
+    g = 1 - bump(t, 0.08, 0.72)                       # 1 around the loop's ends: the grin he waits on
+    body_pose(bend=7 + 1.0 * math.sin(a), twist=-4 + 1.5 * math.sin(a + 0.6), lean=-1 + 1.0 * math.cos(a),
+              pitch=20 - 16 * g, yaw=-3 + 2 * math.sin(a) + 4 * g, roll=1 + 6 * g, breath=0.5 + 0.5 * math.sin(a / 2))
+    face(smile=0.35 + 0.6 * g, open_=0.25 * g, brow=(0.5 * g, 0.4 * g), look=(3 * g, 16 * g - 8 * (1 - g)), squint=0.2 + 0.35 * g)
+    free_left(t, math.sin(a / 2))
+    tip = S2W(DRINK[0] + 5 * math.cos(a), DRINK[1] - 18 + 2 * math.sin(a), D_HAND + 0.04 * math.sin(a))
+    fist = S2W(CX - 82 + 10 * math.cos(a - 0.4), 540 + 5 * math.sin(a - 0.4), D_HAND - 0.15)
+    clavicle_follow('R', fist); set_pole('R', (2.8, 1.6, -3.0))
+    grip('R', 0.9, 0.8)
+    held_axis_place('R', fist, tip, pr['thyrsus'])
+
+
+def L_pour(t, pr):
+    """Recipe step (pour, strain, vine): the bottle by its neck in his right fist; a small dip, lift it over
+    the glass, tip it with the wrist and pour; he holds the pour (from `hold`) with a delighted grin."""
+    k = [(0.0, (CX - 78, 612, 0.0)), (0.08, (CX - 82, 620, 0.0)), (0.34, (CX - 52, 548, 0.0)),
+         (0.5, (CX - 30, 536, 0.6)), (0.62, (CX - 26, 532, 1.0)), (0.74, (CX - 24, 536, 1.0), 'h'),
+         (0.87, (CX - 22, 532, 1.04)), (1.0, (CX - 24, 536, 1.0), 'h')]
+    hx, hy, tip = track(t, k, cyc=False)
+    g = smoothstep(0.62, 0.78, t)
+    body_pose(bend=5 + 3 * smoothstep(0.1, 0.5, t), twist=-6 + 3 * smoothstep(0.2, 0.6, t), lean=-2 * smoothstep(0.1, 0.4, t),
+              pitch=14 + 6 * smoothstep(0.1, 0.5, t) - 14 * g, yaw=-6 + 3 * g + 1.5 * math.sin(2 * math.pi * (t - 0.74) / 0.26) * g,
+              roll=7 * g, breath=0.5 + 0.5 * math.sin(2 * math.pi * t))
+    face(smile=0.4 + 0.6 * g, open_=0.35 * g, brow=(0.55 * g, 0.5 * g), look=(5 * g, 14 * g - 6 * (1 - g)), squint=0.2 + 0.4 * g)
+    free_left(t)
+    fist = S2W(hx, hy, D_HAND - 0.1)
+    ang = math.radians(108 * tip)
+    axis = Vector((math.sin(ang), -0.25 * math.sin(ang), math.cos(ang))).normalized()    # the bottle's up, tipping to his left
+    clavicle_follow('R', fist); set_pole('R', (2.6, 1.8, -3.2))
+    grip('R', 0.85, 0.7)
+    held_axis_place('R', fist, fist - axis * 0.95, pr['bottle'])
+    upd()
+    for o in [o for o in bpy.data.objects if o.name.startswith('p_stream')]: bpy.data.objects.remove(o, do_unlink=True)
+    if tip > 0.92:
+        mouth_ = pr['bottle'].matrix_world @ Vector((0, 0, 1.27))
+        bot = S2W(DRINK[0] + 2, DRINK[1] - 22, D_HAND)
+        mid = mouth_.lerp(bot, 0.5) + Vector((0.03, 0, 0.02))
+        wob = 0.01 * math.sin(t * 40)
+        cu_ = curve_tube('p_stream', [mouth_ + Vector((0.02, 0, -0.02)), mid + Vector((wob, 0, 0)), bot], 0.028, taper_curve('stream', [(0, 1), (0.4, 0.7), (1, 0.55)]), M_POUR, 2)
+
+
+def L_shake(t, pr):
+    """Recipe step (shake): the shaker in both hands at his right shoulder, cap in the left palm, tin in the
+    right; two hard shakes a loop with the body following; a grin throughout."""
+    a = 2 * math.pi * t * 2
+    sk = track(t * 2 % 1.0, [(0.0, -1.0), (0.12, -1.1), (0.45, 1.0), (0.55, 1.08), (0.88, -1.0)])
+    lag = track((t * 2 - 0.06) % 1.0, [(0.0, -1.0), (0.12, -1.1), (0.45, 1.0), (0.55, 1.08), (0.88, -1.0)])
+    body_pose(bend=3 + 1.5 * lag, twist=-9 - 2.5 * lag, lean=-3 - 1.5 * lag, pitch=4 - 3 * lag, yaw=-6 - 3 * lag,
+              roll=5 + 2 * lag, breath=0.6)
+    face(smile=0.85, open_=0.3 + 0.12 * lag, brow=(0.6, 0.55), look=(6, 10), squint=0.5)
+    axis = Vector((-0.42, -0.22, 1.0)).normalized()
+    c = S2W(CX - 74 + 6 * sk, 486 - 22 * sk, D_HAND - 0.05) + axis * (0.05 * sk)
+    sh = pr['shaker']; base = c - axis * 0.45
+    sh.matrix_world = axis_matrix(base, axis); upd()
+    ex = axis.cross(Vector((0, -1, 0))).normalized()
+    set_pole('R', (2.4, 1.0, -3.2)); set_pole('L', (2.0, 1.0, -2.6))
+    rp = base + axis * 0.3 + ex * -0.06 + Vector((0, -0.2, 0))
+    lp = base + axis * 0.92 + ex * 0.02 + Vector((0, -0.05, 0))
+    clavicle_follow('R', rp); clavicle_follow('L', lp)
+    place_palm('R', rp, face=Vector((0.25, 0.9, 0.0)), along=ex * -0.2 + Vector((0.3, 0.6, 0.15)), wrist_amount=0.85)
+    place_palm('L', lp, face=-axis, along=Vector((-0.8, 0.2, 0.0)), wrist_amount=0.85)
+    grip('R', 0.75, 0.6); grip('L', 0.45, 0.4)
+
+
+def L_reach(t, pr):
+    """Recipe step (lemon, mint, ice, garnish): he looks up, reaches up and back to the shelf, takes a small
+    bottle by the neck, brings it down in front of him and holds it out over the counter, delighted."""
+    k = [(0.0, (CX - 70, 600, -0.9)), (0.07, (CX - 74, 612, -0.95)), (0.3, (CX - 150, 360, 0.25)), (0.4, (CX - 158, 332, 0.45), 'h'),
+         (0.47, (CX - 156, 336, 0.45), 'h'), (0.66, (CX - 70, 548, -1.25)), (0.73, (CX - 58, 562, -1.32)), (0.79, (CX - 60, 556, -1.3), 'h'),
+         (0.9, (CX - 61, 552, -1.3)), (1.0, (CX - 60, 556, -1.3), 'h')]
+    hx, hy, hd = track(t, k, cyc=False)
+    upv = bump(t, 0.05, 0.6) ** 0.7
+    g = smoothstep(0.66, 0.8, t)
+    body_pose(bend=3 - 5 * upv, twist=-4 - 12 * upv, lean=-5 * upv, pitch=10 - 32 * upv - 10 * g, yaw=-6 - 16 * upv + 6 * g,
+              roll=-4 * upv + 7 * g, breath=0.5 + 0.5 * math.sin(2 * math.pi * t))
+    face(smile=0.35 + 0.15 * upv + 0.5 * g, open_=0.1 * upv + 0.3 * g, brow=(0.3 * upv + 0.55 * g, 0.3 * upv + 0.5 * g),
+         look=(-8 * upv + 5 * g, 14 * upv + 12 * g), squint=0.15 + 0.4 * g)
+    free_left(t)
+    fist = S2W(hx, hy, hd)
+    closed = smoothstep(0.38, 0.45, t)
+    clavicle_follow('R', fist); set_pole('R', (3.0, 2.4, -2.0 - 1.4 * (1 - upv)))
+    b_ = pr['small']
+    up_dir = Vector((0.15 * (1 - g), 0.1, 1)).normalized()
+    if closed < 0.5:      # not holding it yet: the open hand, fingers up, palm toward the shelf
+        b_.hide_render = True
+        place_palm('R', fist, face=Vector((0.2, 1.0, 0.3)), along=Vector((-0.1, 0.1, 1)), wrist_amount=0.7)
+        grip('R', 0.15 + 0.6 * closed, 0.2 + 0.4 * closed)
+    else:
+        b_.hide_render = False
+        grip('R', 0.85, 0.7)
+        held_axis_place('R', fist, fist - up_dir * 0.62, b_)
+
+
+def L_story(t, pr):
+    """Tap him: he tells a story: eyes up to you, brows raised, an open right hand turning out as he talks, the
+    left hand lifting a little, head nodding and tilting, mouth moving."""
     a = 2 * math.pi * t
-    set_hands((CX + 95, 615, DH + 0.2), (CX - 30 + 8 * math.cos(a), 545 + 4 * math.sin(a), DH))
-    look(-4, 16, 0); grip('L', 0.25); grip('R', 0.9)
+    body_pose(bend=1 + 1.5 * math.sin(a), twist=-3 + 3 * math.sin(a), lean=1.5 * math.sin(a + 1.2), pitch=-2 + 5 * math.sin(2 * a + 0.5),
+              yaw=6 * math.sin(a + 0.3), roll=5 * math.sin(a + 0.9), breath=0.5 + 0.5 * math.sin(a))
+    talk = 0.5 + 0.5 * math.sin(a * 4 + 0.3) * math.sin(a * 2 + 1.1)
+    face(smile=0.55 + 0.2 * math.sin(a), open_=0.15 + 0.35 * talk, brow=(0.55 + 0.35 * math.sin(a * 2), 0.5 + 0.3 * math.sin(a * 2 + 0.3)),
+         look=(3 * math.sin(a), 14), squint=0.2)
+    rx = track(t, [(0.0, (CX - 96, 552)), (0.25, (CX - 128, 532)), (0.5, (CX - 110, 548)), (0.75, (CX - 136, 540))])
+    rp = S2W(rx[0], rx[1], D_HAND + 0.1)
+    turn = 0.5 + 0.5 * math.sin(a * 2)
+    set_pole('R', (2.8, 1.4, -3.4)); clavicle_follow('R', rp)
+    place_palm('R', rp, face=Vector((-0.45 * turn, -0.35, 0.85)).normalized(), along=Vector((-0.75, -0.6, 0.15)), wrist_amount=0.8)
+    grip('R', 0.12 + 0.12 * (1 - turn), 0.1)
+    lp = S2W(CX + 108 + 10 * math.sin(a + 2), 586 + 8 * math.sin(a * 2 + 1), D_HAND + 0.25)
+    set_pole('L', (2.6, 1.4, -3.4)); clavicle_follow('L', lp)
+    place_palm('L', lp, face=Vector((0.4, -0.3, 0.85)).normalized(), along=Vector((0.6, -0.75, 0.1)), wrist_amount=0.7)
+    grip('L', 0.25, 0.2)
 
 
-def L_pour(t):     # lift the bottle, tip it over the glass, hold the pour
-    up = ease(min(1, t / 0.4)); tip = ease(max(0, min(1, (t - 0.35) / 0.4)))
-    set_hands((CX + 90, 615, DH + 0.2), (CX - 95 + 25 * up, 600 - 60 * up, DH))
-    look(-6, 14, 0); grip('L', 0.25); grip('R', 0.95)
+def L_dip(t, pr):
+    """Recipe step (honey, R8): the thyrsus through his right fist, its lower end lowered into the honey jar on
+    the counter, dipped, lifted dripping and carried over the glass, where he holds it as the honey runs
+    (from `hold`), pleased with himself. The jar is the app's own layer; only his staff tip goes into it."""
+    jx, jy = JAR_MOUTH
+    k = [(0.0, (CX - 92, 560, CX - 96, 640)), (0.07, (CX - 96, 556, CX - 102, 636)),
+         (0.27, (jx + 14, 470, jx + 2, jy - 6)), (0.34, (jx + 10, 482, jx, jy + 14), 'h'),
+         (0.4, (jx + 12, 478, jx + 1, jy + 8)), (0.46, (jx + 10, 484, jx, jy + 16), 'h'),
+         (0.62, (jx + 40, 448, jx + 36, jy - 34)), (0.76, (CX - 58, 468, DRINK[0] - 8, DRINK[1] - 66)),
+         (0.82, (CX - 60, 472, DRINK[0] - 10, DRINK[1] - 62), 'h'), (0.91, (CX - 59, 470, DRINK[0] - 9, DRINK[1] - 64)),
+         (1.0, (CX - 60, 472, DRINK[0] - 10, DRINK[1] - 62), 'h')]
+    fx, fy, tx, ty = track(t, k, cyc=False)
+    reach = bump(t, 0.05, 0.75) ** 0.6
+    g = smoothstep(0.74, 0.84, t)
+    body_pose(bend=5 + 7 * reach, twist=-4 - 10 * reach + 3 * g, lean=-4 * reach, pitch=14 + 10 * reach - 16 * g,
+              yaw=-6 - 14 * reach + 8 * g, roll=-2 * reach + 7 * g, breath=0.5 + 0.5 * math.sin(2 * math.pi * t))
+    face(smile=0.4 + 0.15 * reach + 0.45 * g, open_=0.1 * reach + 0.3 * g, brow=(0.2 * reach + 0.6 * g, 0.2 * reach + 0.5 * g),
+         look=(-10 * reach * (1 - g) + 5 * g, -8 * reach * (1 - g) + 14 * g), squint=0.2 + 0.35 * g)
+    free_left(t)
+    fist = S2W(fx, fy, D_HAND - 0.05)
+    tip = S2W(tx, ty, -0.85 + (D_HAND + 0.85) * smoothstep(0.55, 0.76, t))
+    clavicle_follow('R', fist); set_pole('R', (2.6, 2.2, -2.8))
+    grip('R', 0.9, 0.8)
+    held_axis_place('R', fist, tip, pr['thyrsus'])
+    upd()
+    end = pr['thyrsus'].matrix_world @ Vector((0, 0, 0.0)); ax_ = (pr['thyrsus'].matrix_world.to_3x3() @ Vector((0, 0, 1))).normalized()
+    for o in [o for o in bpy.data.objects if o.name.startswith('p_honey')]: bpy.data.objects.remove(o, do_unlink=True)
+    # honey: a coat on the tip once dipped; a thread back to the jar as it lifts, which thins and breaks;
+    # then a drip from the tip, and over the glass a steady thread into it
+    if t > 0.36:
+        bpy.ops.mesh.primitive_uv_sphere_add(radius=0.055, segments=16, ring_count=8, location=end + ax_ * 0.05)
+        c_ = bpy.context.active_object; c_.name = 'p_honey_coat'; c_.scale = (1, 1, 2.0)
+        c_.rotation_euler = ax_.to_track_quat('Z', 'Y').to_euler(); c_.data.materials.append(M_HONEYD); smooth(c_)
+    jar = S2W(jx, jy + 4, -0.85)
+    if 0.46 < t < 0.6:
+        f = (t - 0.46) / 0.14
+        mid = end.lerp(jar, 0.5) + Vector((0, 0, -0.1 * f))
+        honey_strand('p_honey_thread', [end, mid, jar], 0.022 * (1 - 0.6 * f), 0.012)
+    elif 0.6 <= t < 0.76:
+        f = (t - 0.6) / 0.16
+        honey_strand('p_honey_drip', [end, end + Vector((0, 0, -0.08 - 0.25 * f))], 0.02, 0.01)
+    elif t >= 0.76:
+        bot = S2W(DRINK[0] - 4, DRINK[1] - 26, D_HAND)
+        ph = (t - 0.76) / 0.24
+        honey_strand('p_honey_run', [end, end.lerp(bot, 0.5) + Vector((0.004 * math.sin(ph * 12), 0, 0)), bot], 0.02, 0.009)
 
 
-def L_shake(t):    # shaker held in both hands at the shoulder, shaking hard
-    k = math.sin(2 * math.pi * t * 2)
-    c = (CX - 85, 500 + 18 * k, DH + 0.15)
-    set_hands((c[0] + 8, c[1] - 62, c[2] - 0.05), (c[0], c[1], c[2]))
-    look(-10, 4, 5 * k); grip('L', 0.8); grip('R', 0.9)
-
-
-def L_reach(t):    # reaches up to the shelf, brings something down, holds it out
-    up = ease(min(1, t / 0.45)); down = ease(max(0, min(1, (t - 0.55) / 0.4)))
-    hx = CX - 60 - 60 * up + 50 * down; hy = 610 - 250 * up + 230 * down
-    set_hands((CX + 90, 615, DH + 0.2), (hx, hy, DH + 0.9 * up * (1 - down)))
-    look(-18 * up * (1 - down), -20 * up * (1 - down) + 10 * down, 0); grip('L', 0.25); grip('R', 0.3 + 0.6 * down)
-
-
-def L_story(t):    # an open-handed gesture, head tilting as he talks
-    a = 2 * math.pi * t
-    set_hands((CX + 90, 610, DH + 0.2), (CX - 110 + 14 * math.sin(a), 560 + 16 * math.sin(a * 2), DH))
-    look(10 * math.sin(a), 4, 5 * math.sin(a)); grip('L', 0.25); grip('R', 0.1)
-    PB['wrist.R'].rotation_euler = (math.radians(-30), 0, math.radians(20))
-
-
-LOOPS = {   # name: (pose function, frames, fps, hold frame, props)
-    'polish': (L_polish, 14, 10, 0, 'polish'),
-    'stir': (L_stir, 12, 12, 0, 'stir'),
-    'pour': (L_pour, 14, 10, 9, 'pour'),
-    'shake': (L_shake, 12, 14, 0, 'shake'),
-    'reach': (L_reach, 14, 10, 11, 'reach'),
-    'story': (L_story, 14, 8, 0, 'story'),
+# name: (pose, frames, fps, hold frame, props). Steps with a hold play once past the app's 3.2 s of acting,
+# then loop from `hold`; steps with hold 0 are cycles whose frame 0 is the still he waits on.
+LOOPS = {
+    'polish': (L_polish, 20, 10, 0, ('glass',)),
+    'stir': (L_stir, 14, 10, 0, ('thyrsus',)),
+    'pour': (L_pour, 28, 8.5, 21, ('bottle',)),
+    'shake': (L_shake, 12, 12, 0, ('shaker',)),
+    'reach': (L_reach, 28, 8.5, 22, ('small',)),
+    'story': (L_story, 18, 8, 0, ()),
+    'dip': (L_dip, 28, 8.5, 22, ('thyrsus',)),
 }
-RECT = (560, 290, 1040, 640)     # world rect of every frame (the counter clips him below ~631 in the app)
-K = 1.5                          # pixels per world unit
+RECT = (560, 290, 1040, 640)     # world rect of every frame (the counter clips him below ~630 in the app)
+K = float(_arg('--k', '1.3'))    # pixels per world unit
+SAMPLES = int(_arg('--samples', '24'))
+QUALITY = int(_arg('--q', '58'))
 
 
-def props_for(kind):
-    out = []
-    if kind == 'polish':
-        out += attach(prop_glass(), 'L', Matrix.LocRotScale(Vector((0, 0.02, 0.06)), Euler((math.radians(-90), 0, 0)), Vector((1, 1, 1))))
-        out += attach(prop_cloth(), 'R', Matrix.Translation(Vector((0, 0.02, 0.02))))
-    elif kind == 'stir':
-        out += prop_thyrsus()
-    elif kind == 'pour':
-        out += prop_bottle(); out[0].scale = (1.4, 1.4, 1.4)
-    elif kind == 'shake':
-        out += prop_shaker(); out[0].scale = (1.6, 1.6, 1.6)
-    return out
-
-
-HELD = {}   # props placed in world space every frame: name -> function(props) using the current pose
-
-
-def axis_matrix(origin, axis):
-    z = Vector(axis).normalized(); x = Vector((0, 1, 0)).cross(z)
-    if x.length < 1e-4: x = Vector((1, 0, 0))
-    x.normalize(); y = z.cross(x)
-    M = Matrix((x, y, z)).transposed().to_4x4(); M.translation = origin; return M
-
-
-def place_held(kind, t, props):
-    if not props: return
-    bpy.context.view_layer.update()
-    root = props[0]; sc = root.scale.copy()
-    palm = hand_frame('R').translation
-    if kind == 'stir':
-        a = 2 * math.pi * t
-        tip = wpt(CX + 6 * math.cos(a), 625, -1.05 + 0.03 * math.sin(a))
-        hold_staff('R', tip, root)                       # the staff runs from the glass up through his fist
-    elif kind == 'pour':
-        tip = ease(max(0, min(1, (t - 0.35) / 0.4)))
-        ang = math.radians(115 * tip)
-        axis = Vector((math.sin(ang), 0, math.cos(ang)))
-        root.matrix_world = axis_matrix(palm - axis * 0.55, axis) @ Matrix.Diagonal((*sc, 1))
-    elif kind == 'shake':
-        axis = Vector((-0.35, -0.15, 1.0))
-        root.matrix_world = axis_matrix(palm - axis.normalized() * 0.5, axis) @ Matrix.Diagonal((*sc, 1))
-
-
-def fist_point(side):
-    """World point in the middle of the closed fist: the centre of the loop each curled finger makes
-    (knuckle, middle joints, fingertip), for the index to little fingers."""
-    m = rig.matrix_world; pb = rig.pose.bones; pts = []
-    for f in (2, 3, 4, 5):
-        pts += [m @ pb[f'finger{f}-1.{side}'].head, m @ pb[f'finger{f}-2.{side}'].head,
-                m @ pb[f'finger{f}-3.{side}'].head, m @ pb[f'finger{f}-3.{side}'].tail]
-    return sum(pts, Vector()) / len(pts)
-
-
-def fist_axis(side):
-    """World direction through the fist, from the little finger's side to the index finger's."""
-    m = rig.matrix_world; pb = rig.pose.bones
-    return (m @ pb[f'finger2-1.{side}'].head - m @ pb[f'finger5-1.{side}'].head).normalized()
-
-
-def hold_staff(side, tip, root, turns=4):
-    """Turn the wrist so the fist's axis lines up with the staff, then run the staff from `tip` (its lower
-    end's aim, e.g. in the glass) up through the middle of the fist. Any pose holding the thyrsus uses this."""
-    m = rig.matrix_world; wb = rig.pose.bones['wrist.' + side]
-    for _ in range(turns):
-        bpy.context.view_layer.update()
-        up = (fist_point(side) - tip).normalized()
-        q = fist_axis(side).rotation_difference(up)
-        piv = m @ wb.head
-        Rw = Matrix.Translation(piv) @ q.to_matrix().to_4x4() @ Matrix.Translation(-piv)
-        wb.matrix = m.inverted() @ Rw @ m @ wb.matrix
-    bpy.context.view_layer.update()
-    g = fist_point(side)
-    root.matrix_world = axis_matrix(tip, (g - tip).normalized())
-    bpy.context.view_layer.update()
-    print(f'[grip] fist axis vs staff: {math.degrees(fist_axis(side).angle((g - tip).normalized())):.1f} deg', flush=True)
+def props_for(kinds):
+    pr = {}
+    for kind in kinds:
+        if kind == 'glass': pr['glass'] = prop_glass()
+        elif kind == 'thyrsus': pr['thyrsus'] = prop_thyrsus()
+        elif kind == 'bottle': pr['bottle'] = prop_bottle()
+        elif kind == 'small': pr['small'] = prop_bottle('p_small', 0.11, 0.78, M_BOTTLE2)
+        elif kind == 'shaker': pr['shaker'] = prop_shaker()
+    return pr
 
 
 def clear_props():
     for o in [o for o in bpy.data.objects if o.name.startswith('p_')]:
         bpy.data.objects.remove(o, do_unlink=True)
+    place_palm.off = {}; held_axis_place.off = {}
 
 
 scene.view_settings.exposure = -1.1   # his marble is pale: keep it from blowing out under the bar's warm key
+cy.film_transparent_glass = True      # the glass lets the bar show through
+cy.max_bounces = 8; cy.transmission_bounces = 8; cy.transparent_max_bounces = 8
+
+
+def pose_frame(name, t, pr):
+    rest_pose(); LOOPS[name][0](t, pr); upd()
+
+
+def region_for(crop, k):
+    if crop == 'head':
+        hx, hy = world_units(wpos('head', True)); return (hx - 85, hy - 25, hx + 85, hy + 150)
+    if crop in ('grip', 'left'):
+        gx, gy = world_units(fist_point('R' if crop == 'grip' else 'L')); return (gx - 70, gy - 60, gx + 70, gy + 60)
+    return RECT
+
+
+def render_one(name, f, k, crop, samples, pr, tag):
+    pose_frame(name, f / LOOPS[name][1], pr)
+    vis = [body] + EXTRA + [o for o in bpy.data.objects if o.name.startswith('p_') and not o.hide_render]
+    t0 = time.time()
+    png = render_region(f'dio_{tag}_{name}_{f:02d}', region_for(crop, k), k, vis, True, samples)
+    return png, time.time() - t0
 
 
 def render_loop(name):
-    fn, nf, fps, hold, kind = LOOPS[name]
-    clear_props(); rest_pose(); fn(0.0); bpy.context.view_layer.update()
-    props = props_for(kind) if kind else []
-    allp = [o for o in bpy.data.objects if o.name.startswith('p_')]
-    vis = [body] + EXTRA + allp
-    if STILL: frames = [int(STILL_FRAME) if STILL_FRAME is not None else nf // 2]
-    else: frames = [nf // 2] if PREVIEW else list(range(nf))
-    rel = os.path.relpath(OUT, PROTO).replace(os.sep, '/')
-    if not (PREVIEW or STILL): os.makedirs(os.path.join(OUT, name), exist_ok=True)
-    out = []; times = []
     from PIL import Image
+    fn, nf, fps, hold, kinds = LOOPS[name]
+    clear_props(); pr = props_for(kinds)
+    frames = list(range(nf)) if not PREVIEW else [hold or nf // 2]
+    if FRAMES_ARG: frames = [int(x) for x in FRAMES_ARG.split(',')]
+    os.makedirs(os.path.join(OUT, name), exist_ok=True)
+    times = []
     for f in frames:
-        rest_pose(); fn(f / nf); bpy.context.view_layer.update()
-        place_held(kind, f / nf, props if kind in ('stir', 'pour', 'shake') else None)
-        region, k = RECT, K * (1.3 if PREVIEW else 1)
-        if STILL:
-            k = K * STILL_SCALE
-            if STILL_CROP == 'head':
-                hx, hy = world_units(rig.matrix_world @ rig.pose.bones['head'].tail); region = (hx - 85, hy - 25, hx + 85, hy + 150)
-            elif STILL_CROP == 'grip':
-                gx, gy = world_units(fist_point('R')); region = (gx - 70, gy - 60, gx + 70, gy + 60)
-        t0 = time.time()
-        png = render_region(f'dio_{name}_{f:02d}', region, k, vis, True, 24)
-        times.append(time.time() - t0)
+        png, dt = render_one(name, f, K * (1.3 if PREVIEW else 1), 'full', SAMPLES, pr, FINISH)
+        times.append(dt)
         im = Image.open(png).convert('RGBA')
-        if PREVIEW or STILL:
+        if PREVIEW:
             bg = Image.new('RGBA', im.size, (40, 30, 26, 255)); bg.alpha_composite(im)
-            if STILL:
-                d_ = STILL_OUT or WORK; os.makedirs(d_, exist_ok=True)
-                bg.save(os.path.join(d_, f'still_{FINISH}_{name}_{f:02d}_{STILL_CROP}.png'))
-            else:
-                bg.save(os.path.join(WORK, f'preview_{name}.png' if FINISH == 'painted' else f'preview_{name}_{FINISH}.png'))
-            continue
-        p = os.path.join(OUT, name, f'{f + 1:04d}.webp'); im.save(p, 'WEBP', quality=68, method=6)
-        out.append(f'{rel}/{name}/{f + 1:04d}.webp')
-    return {'frames': out, 'fps': fps, 'hold': hold, 'secondsPerFrame': round(sum(times) / len(times), 1)} if out else None
+            bg.save(os.path.join(WORK, f'preview_{name}_{FINISH}.png')); continue
+        im.save(os.path.join(OUT, name, f'{f + 1:04d}.webp'), 'WEBP', quality=QUALITY, method=6, alpha_quality=80)
+    rel = os.path.relpath(OUT, PROTO).replace(os.sep, '/')
+    return {'frames': [f'{rel}/{name}/{f + 1:04d}.webp' for f in range(nf)], 'fps': fps, 'hold': hold,
+            'secondsPerFrame': round(sum(times) / len(times), 1)}
 
+
+def render_still(name, f, crop, scale, samples=24):
+    from PIL import Image
+    fn, nf, fps, hold, kinds = LOOPS[name]
+    clear_props(); pr = props_for(kinds)
+    f = nf // 2 if f is None else f
+    png, dt = render_one(name, f, K * scale, crop, samples, pr, 'still')
+    im = Image.open(png).convert('RGBA'); bg = Image.new('RGBA', im.size, (52, 40, 34, 255)); bg.alpha_composite(im)
+    d_ = STILL_OUT or WORK; os.makedirs(d_, exist_ok=True)
+    p = os.path.join(d_, f'still_{FINISH}_{name}_{f:02d}_{crop}.png'); bg.save(p)
+    print('[still]', p, f'{dt:.1f}s', flush=True)
+
+
+def render_sheet(name, scale):
+    from PIL import Image, ImageDraw
+    fn, nf, fps, hold, kinds = LOOPS[name]
+    clear_props(); pr = props_for(kinds); ims = []
+    for f in range(nf):
+        png, dt = render_one(name, f, K * scale, 'full', 6, pr, 'sheet')
+        im = Image.open(png).convert('RGBA'); bg = Image.new('RGBA', im.size, (52, 40, 34, 255)); bg.alpha_composite(im)
+        ImageDraw.Draw(bg).text((3, 2), str(f), fill=(255, 220, 120)); ims.append(bg.convert('RGB'))
+    cols = min(7, nf); w, h = ims[0].size; rows = (nf + cols - 1) // cols
+    sh = Image.new('RGB', (cols * w, rows * h), (20, 18, 18))
+    for i, im in enumerate(ims): sh.paste(im, ((i % cols) * w, (i // cols) * h))
+    d_ = STILL_OUT or WORK; os.makedirs(d_, exist_ok=True)
+    p = os.path.join(d_, f'sheet_{FINISH}_{name}.jpg'); sh.save(p, quality=85); print('[sheet]', p, flush=True)
+
+
+ABOUT = ('Dionysus, a MakeHuman (MPFB2) base shaped towards the Louvre Dionysus, rendered by blender/build_dionysus.py '
+         '(Cycles) in three finishes (Q8): loops is painted marble (the default); finishes.white and finishes.living '
+         'hold the same seven loops. Coverage stays classical in every finish (Q9): the renders show the himation '
+         'as modelled, and modest/cheeky apply to the drawn figure only. rect and head are in world units '
+         "(prototype B's SVG space). Steps with a hold play once (past the app's 3.2 s of acting) and then loop "
+         'from hold; steps with hold 0 are cycles whose frame 0 is the still he waits on.')
 
 if __name__ == 'build_dionysus' or True:
-    names = [STILL] if STILL else [ONLY_LOOP] if ONLY_LOOP else list(LOOPS)
-    man_p = os.path.join(PROTO, 'dio-loops.json' if FINISH == 'painted' else f'dio-loops-{FINISH}.json')
-    man = json.load(open(man_p)) if os.path.exists(man_p) and not PREVIEW else {'loops': {}}
-    for nm in names:
-        res = render_loop(nm)
-        if res: man['loops'][nm] = res
-        print('[loop]', nm, res and res['secondsPerFrame'], flush=True)
-    if not (PREVIEW or STILL):
-        rest_pose(); L_polish(0); bpy.context.view_layer.update()
-        man['rect'] = [RECT[0], RECT[1], RECT[2] - RECT[0], RECT[3] - RECT[1]]
-        man['head'] = head_rect()
-        man['finish'] = FINISH
-        man['about'] = (f'Dionysus, MakeHuman (MPFB2) base, finish {FINISH}, rendered by blender/build_dionysus.py. '
-                        'rect and head are in world units (prototype B\'s SVG space).')
-        man['render'] = {'engine': 'Cycles (CPU)', 'samples': 24, 'denoiser': 'OpenImageDenoise', 'pxPerWorldUnit': K}
-        json.dump(man, open(man_p, 'w'), indent=1)
+    viewport_mods(False)
+    if STILL or STILLS:
+        specs = [(STILL, STILL_FRAME, STILL_CROP, STILL_SCALE)] if STILL else [tuple(s_.split(':')) for s_ in STILLS.split(',')]
+        for nm, fr, crop, sc in specs:
+            render_still(nm, None if fr in (None, '') else int(fr), crop or 'full', float(sc or 1))
+    elif SHEET:
+        for nm in SHEET.split(','): render_sheet(nm, STILL_SCALE)
+    else:
+        names = [ONLY_LOOP] if ONLY_LOOP else list(LOOPS)
+        man = json.load(open(MAN_P)) if os.path.exists(MAN_P) else {}
+        man.setdefault('loops', {}); man.setdefault('finishes', {})
+        for nm in names:
+            res = render_loop(nm)
+            if PREVIEW: continue
+            if FRAMES_ARG:       # a partial re-render keeps the manifest entry
+                continue
+            (man['loops'] if FINISH == 'painted' else man['finishes'].setdefault(FINISH, {'loops': {}})['loops'])[nm] = res
+            print('[loop]', nm, res['secondsPerFrame'], flush=True)
+        if not PREVIEW:
+            rest_pose(); L_polish(0, props_for(('glass',))); upd()
+            man['rect'] = [RECT[0], RECT[1], RECT[2] - RECT[0], RECT[3] - RECT[1]]
+            man['head'] = head_rect()
+            man['about'] = ABOUT
+            man['render'] = {'engine': 'Cycles (CPU, 4 threads)', 'samples': SAMPLES, 'adaptiveThreshold': 0.02,
+                             'denoiser': 'OpenImageDenoise', 'pxPerWorldUnit': K, 'webp': {'quality': QUALITY, 'alphaQuality': 80, 'method': 6}}
+            man.pop('finish', None)
+            out = {k_: man[k_] for k_ in ('rect', 'head', 'about', 'render', 'loops', 'finishes') if k_ in man}
+            json.dump(out, open(MAN_P, 'w'), indent=1)
