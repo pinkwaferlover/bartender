@@ -32,7 +32,7 @@
   "waiting": true,
   "dioBlur": "none",
   "advancedByTap": 1,
-  "pasteRead": 9,
+  "pasteRead": 8,
   "phoneInFrame": [
    [
     "menu",
@@ -57,7 +57,7 @@
    "waiting": true
   }
  },
- "weightMB": 1.46,
+ "weightMB": 1.47,
  "files": 52,
  "errors": []
 }

@@ -62,8 +62,12 @@ function setRunOut(k, out) {
 }
 const isBottle = k => ['spirit', 'wine', 'liqueur', 'bitters', 'mixer'].includes((ING[k] || [])[1]);
 const shelfBottles = () => [...new Set([...BAR.have, ...BAR.out])].filter(isBottle).map(k => ({ k, style: ING[k][0], kind: ING[k][1], colour: ING[k][2], family: ING[k][3], out: BAR.out.has(k) }))
-  .sort((a, b) => ORDER.indexOf(a.family) - ORDER.indexOf(b.family));
-const ORDER = ['whisky', 'gin', 'vodka', 'rum', 'tequila', 'brandy', 'aperitif', 'bitters', 'mixer'];
+  /* a stable order: by group, then by the inventory's own order, so marking a Bottle run out never moves it */
+  .sort((a, b) => ORDER.indexOf(groupOf(a.k)) - ORDER.indexOf(groupOf(b.k)) || INV0.indexOf(a.k) - INV0.indexOf(b.k) || a.style.localeCompare(b.style));
+const ORDER = ['whisky', 'gin', 'vodka', 'rum', 'tequila', 'brandy', 'liqueur', 'aperitif', 'bitters', 'mixer'];
+/* Shelf groups from the data: a liqueur (kind 'liqueur', not an aperitif) is a Liqueur, whatever spirit it is made from */
+const groupOf = k => ING[k][1] === 'liqueur' && ING[k][3] !== 'aperitif' ? 'liqueur' : ING[k][3];
+const GROUP_NAME = g => FAMILIES[g] || { liqueur: 'Liqueurs', bitters: 'Bitters', mixer: 'Mixers' }[g] || 'Other';
 
 function missingFor(r) { // ingredients you lack (no swap held)
   return r.ing.filter(x => !x.o && !STAPLE.has(x.k) && !BAR.have.has(x.k) && !x.subs.some(s => BAR.have.has(s)));

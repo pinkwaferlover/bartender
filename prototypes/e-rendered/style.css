@@ -3,7 +3,7 @@
    Marcellus for names over Inter for reading. The bar stays Blender's; the panels are Halo's. */
 :root{--step-size:36px;--text-scale:1;--page:#0f0e10;--cream:#f0e7d8;
  --bg:#1b191c;--ink:#f0e7d8;--mute:#9d9488;--faint:#332f34;--glass:rgba(240,231,216,.13);--acc:#e2ae5c;--ok:#7cc48a;--need:#e07060;
- --panel:rgba(27,25,28,.96);--line:rgba(240,231,216,.12);
+ --panel:#1b191c;--line:rgba(240,231,216,.12);
  --display:"Marcellus",Georgia,serif;--body:"Inter",system-ui,sans-serif;--e:cubic-bezier(.2,0,0,1);
  --skin:#e8d4bd;--shade:#b89a80;--veinop:.28;--red:#9e2a22;--red2:#7a1d18;--grn:#2f5a32;--grn2:#244726;--lip:#b7615a;--cheek:#d9907a;--cheekop:.35;--hair:#2b1b12;
  --f-sweet:#e0a224;--f-bal:#4fa59d;--f-bit:#d0453a;--f-dec:#b07a52;--f-str:#d46a28;--f-fre:#62ad5a;
@@ -45,7 +45,7 @@ svg.ghost{opacity:.3}
 /* Dionysus: rim only. He must stay sharp and unbleached (R10) */
 #dio{transition:filter .25s var(--e)}
 #dio:hover,#dio.lit{filter:drop-shadow(0 0 1px rgba(255,222,170,.85)) drop-shadow(0 0 5px rgba(226,174,92,.25))}
-#dio:focus-visible{filter:drop-shadow(0 0 0 var(--acc)) drop-shadow(0 0 2px var(--acc))}
+#dio .ring{stroke-width:3px}
 /* the shelf: the bottles lift as one when it is touched; each keeps its own shadow */
 #shelf .lift{transform-origin:50% 100%}
 #shelf:active .lift,#shelf.pressed .lift{transform:translateY(-2px)}
@@ -90,7 +90,7 @@ svg.ghost{opacity:.3}
 #talkBtn{left:50%;bottom:max(20px,env(safe-area-inset-bottom));transform:translateX(-50%);display:flex;align-items:center;gap:14px;height:56px;min-width:340px;padding:0 10px 0 24px;border-radius:28px;
  background:rgba(51,47,52,.92);color:var(--ink);box-shadow:0 0 0 1px rgba(240,231,216,.08) inset,0 14px 34px rgba(0,0,0,.55);font:500 17px var(--body);text-align:left}
 #talkBtn .tl{flex:none}
-#talkBtn .cyc{position:relative;flex:1;height:22px;overflow:hidden;color:var(--mute);font-weight:400;font-size:15px}
+#talkBtn .cyc{position:relative;flex:1;height:22px;overflow:hidden;-webkit-mask-image:linear-gradient(90deg,#000 85%,transparent);mask-image:linear-gradient(90deg,#000 85%,transparent);color:var(--mute);font-weight:400;font-size:15px}
 #talkBtn .cyc em{position:absolute;left:0;top:0;font-style:normal;white-space:nowrap;opacity:0;animation:cyc 15s infinite}
 @keyframes cyc{0%{opacity:0;transform:translateY(8px)}3%,17%{opacity:1;transform:none}20%,100%{opacity:0;transform:translateY(-8px)}}
 #talkBtn .mi{width:40px;height:40px;border-radius:50%;display:grid;place-items:center;color:var(--acc);margin-left:auto}
@@ -235,30 +235,30 @@ svg.ghost{opacity:.3}
 /* ---- Recipe: Halo's grid on a dark card; he stands sharp beside it (R10) ---- */
 .recipe{left:max(20px,3vw);top:76px;bottom:20px;width:min(480px,46vw);display:flex;flex-direction:column;background:var(--panel);color:var(--ink);border-radius:22px;padding:18px 22px 14px;
  box-shadow:0 0 0 1px rgba(240,231,216,.08),0 24px 60px rgba(0,0,0,.6)}
-.recipe .rtop{flex:0 1 auto;min-height:72px;overflow:auto;scrollbar-width:thin;scrollbar-color:var(--faint) transparent;margin:0 -6px;padding:0 6px}
+.recipe .rtop{flex:0 0 auto;max-height:45%;min-height:72px;overflow:auto;scrollbar-width:thin;scrollbar-color:var(--faint) transparent;margin:0 -6px;padding:0 6px}
 .recipe .kicker{display:flex;align-items:center;gap:8px;margin:0 56px 6px 0;font-size:13.5px;color:var(--acc)}
 .recipe .kicker b{font-weight:500;color:var(--ink)}
 .recipe .head{display:grid;grid-template-columns:72px 1fr;column-gap:14px;align-items:end;margin:0 52px 10px 0}
 .recipe .head .rg{display:flex;justify-content:center;align-items:flex-end}
 .recipe h2{font:400 38px/1.02 var(--display);letter-spacing:.01em;margin:0 0 6px}
-.recipe .rm{display:flex;flex-wrap:wrap;gap:4px 14px;color:var(--mute);font-size:13.5px}.recipe .rm span{display:flex;align-items:center;gap:6px}
+.recipe .rm{display:flex;flex-wrap:wrap;gap:4px 14px;color:var(--mute);font-size:calc(13.5px * min(var(--text-scale), 1.15))}.recipe .rm span{display:flex;align-items:center;gap:6px}
 .again{position:absolute;top:10px;right:10px;width:56px;height:56px;border:0;background:none;border-radius:16px;display:grid;place-items:center}
 .again:hover{background:rgba(240,231,216,.05)}
 .recipe .worth{margin:0 0 8px;background:rgba(226,174,92,.12);color:var(--ink);border-radius:12px;padding:8px 12px;font-size:14px}
 .recipe .golden{margin:0 0 8px;background:linear-gradient(90deg,rgba(232,196,90,.25),rgba(255,243,196,.06));color:var(--ink);border-radius:12px;padding:8px 12px;font-size:14px}
-.recipe .ing{display:grid;grid-template-columns:28px 52px 40px 1fr auto;column-gap:10px;row-gap:3px;align-items:center;margin:2px 0 8px}
+.recipe .ing{--s:var(--text-scale);display:grid;grid-template-columns:28px calc(52px * var(--s)) calc(40px * var(--s)) 1fr auto;column-gap:10px;row-gap:3px;align-items:center;margin:2px 0 8px}
 .recipe .ir{display:contents}
 .recipe .ii{display:grid;place-items:center;height:30px}
-.recipe .iq{text-align:right;font-size:18px;font-variant-numeric:tabular-nums}
-.recipe .iu{font-size:13px;color:var(--mute)}
-.recipe .in{font-size:17px;line-height:1.2}
-.recipe .ix{font-size:13px;text-align:right;white-space:nowrap}
+.recipe .iq{text-align:right;font-size:calc(18px * var(--s));font-variant-numeric:tabular-nums}
+.recipe .iu{font-size:calc(13px * var(--s));color:var(--mute)}
+.recipe .in{font-size:calc(17px * var(--s));line-height:1.2}
+.recipe .ix{font-size:calc(13px * var(--s));text-align:right;white-space:nowrap}
 .recipe .ir.miss .iq,.recipe .ir.miss .in{color:var(--mute)}
 .recipe .sub{color:var(--acc)}.recipe .opt{color:var(--mute)}.recipe .needx{color:var(--need)}
-.toolswap{border:1px solid rgba(226,174,92,.35);background:transparent;color:#d8cfc2;border-radius:12px;padding:7px 12px;font-size:13.5px;margin:0 0 4px}
+.toolswap{border:1px solid rgba(226,174,92,.35);background:transparent;color:#d8cfc2;border-radius:12px;padding:7px 12px;font-size:calc(13.5px * var(--text-scale));margin:0 0 4px}
 .toolswap b{color:var(--ink);font-weight:500}
 /* R6, R11: one step at a time, big enough to read from a metre; the size is one variable. The glyph shows the hand's movement. */
-.stepbox{flex:1 0 auto;max-height:64%;min-height:0;overflow:auto;margin-top:6px;border-top:1px solid var(--line);padding:12px 2px 6px;cursor:pointer;display:grid;grid-template-columns:1fr auto;column-gap:14px;align-items:start;scrollbar-width:thin;scrollbar-color:var(--faint) transparent}
+.stepbox{flex:1 1 0;min-height:0;overflow:auto;margin-top:6px;border-top:1px solid var(--line);padding:12px 2px 6px;cursor:pointer;display:grid;grid-template-columns:1fr auto;column-gap:14px;align-items:start;scrollbar-width:thin;scrollbar-color:var(--faint) transparent}
 .stepbox .stxt{min-width:0}
 .stepbox .stepno{margin:0;font:600 12px var(--body);letter-spacing:.08em;text-transform:uppercase;color:var(--mute)}
 .stepbox .stepno i{font-style:normal;color:var(--acc)}
@@ -269,7 +269,7 @@ svg.ghost{opacity:.3}
 .stepbox .glyph .act{width:112px;height:112px;overflow:visible}
 .stepbox .sec{display:flex;align-items:center;gap:6px;color:var(--mute);font-size:13px}
 .stepbox .done{grid-column:1/-1}
-.thumbs{display:flex;gap:6px;padding:8px 0 2px;overflow-x:auto;scrollbar-width:none}
+.thumbs{flex:none;display:flex;gap:6px;padding:8px 0 2px;overflow-x:auto;scrollbar-width:none}
 .thumbs .th{flex:none;width:44px;height:44px;border:0;padding:2px;border-radius:12px;background:transparent;opacity:.35;display:grid;place-items:center}
 .thumbs .th .act{width:38px;height:38px}
 .thumbs .th .act *{animation:none!important}
@@ -325,15 +325,16 @@ svg.ghost{opacity:.3}
  .recipe .head{grid-template-columns:1fr;margin-bottom:6px}
  .recipe .head .rg{display:none}
  .recipe h2{font-size:30px;margin-bottom:4px}
- .recipe .rm{font-size:12.5px;gap:2px 10px}
- .recipe .ing{grid-template-columns:22px 40px 32px 1fr auto;column-gap:7px;row-gap:0;margin-bottom:6px}
+ .recipe .rm{font-size:calc(12.5px * min(var(--text-scale), 1.15));gap:2px 10px}
+ .recipe .ing{grid-template-columns:22px calc(40px * var(--s)) calc(32px * var(--s)) 1fr auto;column-gap:7px;row-gap:0;margin-bottom:6px}
  .recipe .ii{height:24px}.recipe .ii svg{max-height:20px;width:auto}
- .recipe .iq{font-size:14px}.recipe .in{font-size:13.5px}.recipe .iu,.recipe .ix{font-size:12px}
- .toolswap{font-size:12.5px;padding:5px 10px}
+ .recipe .iq{font-size:calc(14px * var(--s))}.recipe .in{font-size:calc(13.5px * var(--s))}.recipe .iu,.recipe .ix{font-size:calc(12px * var(--s))}
+ .toolswap{font-size:calc(12.5px * var(--text-scale));padding:5px 10px}
  .recipe .worth,.recipe .golden{font-size:13px;padding:6px 10px}
  .stepbox{grid-template-columns:1fr auto;column-gap:10px;padding-top:8px}
  .stepbox .glyph .act{width:72px;height:72px}
- .thumbs .th{width:36px;height:36px;border-radius:10px}.thumbs .th .act{width:30px;height:30px}
+ .thumbs{gap:2px}.thumbs .th{width:44px;height:44px;border-radius:12px}.thumbs .th .act{width:32px;height:32px}
+ .kicker .dice{display:none}
  .recipe .btn{padding:10px 16px}
  .again{width:52px;height:44px;top:8px;right:6px}.again .dice{--ds:15px!important}
  .recipe .rtop{-webkit-mask-image:linear-gradient(#000 calc(100% - 16px),transparent);mask-image:linear-gradient(#000 calc(100% - 16px),transparent);padding-bottom:10px}
@@ -352,14 +353,25 @@ svg.ghost{opacity:.3}
  .settings{top:auto;bottom:8px;right:8px;left:8px;width:auto}
 }
 /* at the largest text the glyph moves above the words on a phone */
-@media (max-width:640px){ :root[data-big] .stepbox{grid-template-columns:1fr} :root[data-big] .stepbox .glyph{order:-1;flex-direction:row;justify-content:flex-start} }
+@media (max-width:640px){ :root[data-big] .stepbox{grid-template-columns:1fr} }
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}.touch:active .lift,.touch.pressed .lift{transform:none}#talkBtn .cyc em:first-child{opacity:1}}
 /* the shelf sheet sits below the shelf it describes */
 .sheet.shelfsheet{top:auto;bottom:16px;transform:translateX(-50%);max-height:48vh}
 @media (max-width:640px){ .sheet.shelfsheet{max-height:56dvh;bottom:8px} }
 
 /* Text size setting: the step uses --step-size; reading panels scale with --text-scale */
-.bubble,.recipe .ing,.recipe .rm,.toolswap,.menunote,.barsheet .bfams{zoom:var(--text-scale)}
+.menunote,.barsheet .bfams{zoom:var(--text-scale)}
+.bubble p{font-size:calc(17px * var(--text-scale))}
+.chip{font-size:calc(15px * min(var(--text-scale), 1.3))}
+.chip.res b{font-size:calc(18px * min(var(--text-scale), 1.3))}
+.story .sq{font-size:calc(19px * var(--text-scale))}
+.talk input{font-size:calc(15px * min(var(--text-scale), 1.3))}
+/* phone at large text: the talk field gets its own row, mic and Ask below it */
+@media (max-width:640px){ :root[data-big] .talk{flex-wrap:wrap} :root[data-big] .talk input{flex:1 1 100%} :root[data-big] .talk .mic{margin-left:auto} :root[data-big] .story .sq{font-size:calc(17px * var(--text-scale))} }
+/* press: panel buttons give a little under the finger, like the touchables on the counter */
+:is(.btn,.chip,.it,.mini,.fb,.tool,.th,.again,.x,.photo,#back):active{transform:translateY(1px) scale(.98)}
+:is(.btn,.chip,.it,.mini,.fb,.tool,.th,.again,.x,.photo,#back){transition:transform .12s var(--e),background .15s var(--e)}
+@media (prefers-reduced-motion:reduce){:is(.btn,.chip,.it,.mini,.fb,.tool,.th,.again,.x,.photo,#back):active{transform:none}}
 
 /* ---- Halo's step glyphs (index.html, copied; its 'drop' keyframes renamed 'adrop' so the shelf's bottle drop keeps its own) ---- */
 .act *{transform-box:view-box}
@@ -447,3 +459,16 @@ svg.ghost{opacity:.3}
 .mist{animation:mist 1.4s ease-out infinite}
 @keyframes mist{0%,25%{opacity:0;transform:none}35%{opacity:1}100%{opacity:0;transform:translateY(24px)}}
 .steam{animation:stm 2.4s ease-out infinite}
+/* strip cards are placed with transform, so the press goes to the glass */
+.dc .pic{transition:transform .12s var(--e)}.dc:active .pic{transform:translateY(2px) scale(.97)}
+@media (prefers-reduced-motion:reduce){.dc:active .pic{transform:none}}
+/* phone: the chips scroll inside the bubble, the talk field always stays in view */
+@media (max-width:640px){
+ .bubble{display:flex;flex-direction:column}
+ .bubble #say,.bubble .talk{flex:none}
+ .bubble #chips{flex:0 1 auto;min-height:48px;overflow:auto}
+ .thumbs{padding-top:4px}
+ /* at the largest text the step comes first: the moving glyph is left to the thumbnails, the ingredients get a smaller share */
+ :root[data-big] .stepbox .glyph{display:none}
+ :root[data-big] .recipe .rtop{max-height:32%}
+}

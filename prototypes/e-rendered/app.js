@@ -2,7 +2,7 @@
    The camera is still the SVG viewBox, in B's world units. The background is one rendered picture per camera
    position; touchables and bottles are separate rendered layers; Dionysus is his own layer (dio-layer.js). */
 /* Halo's step glyphs (src/anim.js, copied unchanged). Loaded first, before anything can open a recipe. */
-(function loadAnim() { const s = document.createElement('script'); s.src = 'anim.js'; s.async = false; document.head.append(s); })();
+const ANIM = (function loadAnim() { const s = document.createElement('script'); s.src = 'anim.js'; s.async = false; document.head.append(s); return s; })();
 const $ = s => document.querySelector(s);
 const NS = 'http://www.w3.org/2000/svg';
 const svg = $('#scene');
@@ -189,7 +189,8 @@ const LIFTED = ['honey', 'menu', 'lamp', 'panther'];
     el('ellipse', { class: 'lpool', 'data-for': id, cx: L.x + L.w / 2, cy: L.y + L.h + 1, rx: Math.max(56, L.w * .85), ry: 18, fill: 'url(#poolGrad)' }, pools);
   });
   /* press: lift a little; keyboard: Enter or Space acts like a tap on any touchable */
-  svg.addEventListener('pointerdown', e => { const t = e.target.closest('.touch'); if (t) t.classList.add('pressed'); });
+  svg.addEventListener('pointerdown', e => { const t = e.target.closest('.touch'); if (t) { t.classList.add('pressed'); if (screen === 'home') cameFrom = t; } });
+  $('#talkBtn').addEventListener('pointerdown', () => { if (screen === 'home') cameFrom = $('#talkBtn'); });
   const unpress = () => document.querySelectorAll('.touch.pressed').forEach(t => t.classList.remove('pressed'));
   addEventListener('pointerup', unpress); addEventListener('pointercancel', unpress); svg.addEventListener('pointerleave', unpress);
   svg.addEventListener('keydown', e => { if (e.key !== 'Enter' && e.key !== ' ') return; const t = e.target.closest('.touch'); if (!t) return;
@@ -209,6 +210,15 @@ function sizeHits() {
   });
 }
 sizeHits();
+/* Dionysus gets the same gold focus ring, drawn round his figure */
+(function dioRing() {
+  const d = $('#dio'), ring = el('rect', { class: 'ring', rx: 14 }); d.appendChild(ring);
+  d.addEventListener('focus', () => {
+    const shape = d.querySelector('#dioLoops path') || d.querySelector('#body');
+    try { const b = shape.getBBox(), m = d.getScreenCTM(), px = Math.hypot(m.a, m.b) || 1, pad = 6 / px;
+      ring.setAttribute('x', b.x - pad); ring.setAttribute('y', b.y - pad); ring.setAttribute('width', b.width + 2 * pad); ring.setAttribute('height', b.height + 2 * pad); ring.setAttribute('rx', 14 / px); } catch (_) {}
+  });
+})();
 
 /* ---------------- Main loop ---------------- */
 let last = performance.now(), T = 0;
@@ -253,6 +263,7 @@ function speak(html, opts = {}) {
   talkForm.hidden = !opts.talk; dio.lookUp(true); $('#talkBtn').hidden = true;
   requestAnimationFrame(placeBubble);
   if (opts.talk && !isPhone()) setTimeout(() => $('#talkIn').focus({ preventScroll: true }), 50);
+  else if (!opts.talk) focusIn(chips.querySelector('.chip'));
 }
 function hush() { bubble.hidden = true; dio.lookUp(false); if (screen === 'home') $('#talkBtn').hidden = false; }
 $('#bubbleX').onclick = () => { hush(); if (shotName !== 'home') home(); };
@@ -264,17 +275,25 @@ function clearScene() {
   panel.hidden = true; panel.className = 'panel'; svg.classList.remove('dim'); document.body.classList.remove('recipe-on');
   recipeState = null; $('#drink').innerHTML = ''; dio.idle(); lightUp(null);
 }
+/* Focus: a panel takes focus when it opens; going home gives it back to the touchable (or the talk pill) you came from.
+   While a panel is open, the scene's touchables leave the Tab order. */
+let cameFrom = null;
+const focusIn = sel => requestAnimationFrame(() => { const e = typeof sel === 'string' ? panel.querySelector(sel) : sel; if (e && !e.closest('[hidden]')) e.focus({ preventScroll: true }); });
+function sceneTabbable(on) { document.querySelectorAll('#scene .touch').forEach(t => { if (t.id !== 'lamp') t.setAttribute('tabindex', on ? '0' : '-1'); }); }
 function home() {
   screen = 'home'; clearScene(); $('#back').hidden = true; $('#talkBtn').hidden = false;
-  hush(); return cam('home');
+  hush(); sceneTabbable(true);
+  const back = cameFrom, a = document.activeElement; cameFrom = null;
+  if (back && back.isConnected && !back.hidden && (!a || a === document.body || panel.contains(a) || bubble.contains(a) || a === $('#back'))) back.focus({ preventScroll: true });
+  return cam('home');
 }
 $('#back').onclick = () => home();
 $('#back').innerHTML = ICON.back;
 /* Halo's search pill: talking to him is the search (Q3). The cycling words are things you can say (R12), never buttons. */
-$('#talkBtn').innerHTML = `<span class="tl">Talk to Dionysus</span><span class="cyc" aria-hidden="true">${['“warm me up”', '“something smoky”', '“after dinner”', '“gin, sharp and fresh”', '“nothing too strong”'].map((t, n) => `<em style="animation-delay:${n * 3}s">${t}</em>`).join('')}</span><span class="mi" aria-hidden="true">${ICON.mic}</span>`;
+$('#talkBtn').innerHTML = `<span class="tl">Talk to Dionysus</span><span class="cyc" aria-hidden="true">${['“warm me up”', '“something smoky”', '“after dinner”', '“fresh, with gin”', '“not too strong”'].map((t, n) => `<em style="animation-delay:${n * 3}s">${t}</em>`).join('')}</span><span class="mi" aria-hidden="true">${ICON.mic}</span>`;
 $('#talkBtn').setAttribute('aria-label', 'Talk to Dionysus');
-addEventListener('keydown', e => { if (e.key === 'Escape' && screen !== 'home' && screen !== 'intro') home(); });
-function setScreen(name) { screen = name; $('#back').hidden = false; $('#talkBtn').hidden = true; clearScene(); }
+addEventListener('keydown', e => { if (e.key !== 'Escape') return; if (!settings.hidden) { settings.hidden = true; $('#lamp').focus({ preventScroll: true }); return; } if (screen !== 'home' && screen !== 'intro') home(); });
+function setScreen(name) { if (screen === 'home' && !cameFrom) { const a = document.activeElement; cameFrom = a && a.closest && (a.closest('.touch') || a.closest('#talkBtn')) || null; } screen = name; $('#back').hidden = false; $('#talkBtn').hidden = true; clearScene(); sceneTabbable(false); }
 function lightUp(id) { document.querySelectorAll('.touch.lit').forEach(t => t.classList.remove('lit')); if (id) $('#' + id).classList.add('lit'); }
 
 /* 1. Opening: the big word becomes the neon sign */
@@ -314,7 +333,7 @@ function openPhotos() {
    <div class="row"><button class="btn ghost" id="pcancel">Not now</button><button class="btn" id="pread">Read these photos</button></div>`;
   panel.querySelectorAll('.photo').forEach(b => b.onclick = () => { const id = b.dataset.id; picked.has(id) ? picked.delete(id) : picked.add(id); b.setAttribute('aria-pressed', picked.has(id)); });
   $('#pasteL').onclick = e => { e.preventDefault(); openPaste(); };
-  $('#pcancel').onclick = home;
+  $('#pcancel').onclick = home; focusIn('#pread');
   $('#pread').onclick = async () => {
     if (!picked.size) return;
     panel.innerHTML = `<h2>Show him your bar</h2><div class="reading"><i></i> Dionysus is reading your photos…</div>`;
@@ -334,6 +353,7 @@ function openPaste() {
    <div class="row"><button class="btn ghost" id="pex">Use an example reply</button><button class="btn ghost" id="pcancel">Not now</button><button class="btn" id="pread">Read the reply</button></div>`;
   $('#aiPrompt').textContent = AI_PROMPT();
   $('#copyP').onclick = () => { navigator.clipboard && navigator.clipboard.writeText(AI_PROMPT()).catch(() => {}); $('#copyP').textContent = 'Copied'; };
+  focusIn('#pasteIn');
   $('#pex').onclick = () => { $('#pasteIn').value = JSON.stringify({ bottles: INVENTORY.have.map(k => ({ label: ING[k][0], style: k })), barware: ['shaker', 'strainer', 'jigger', 'spoon'] }); };
   $('#pcancel').onclick = home;
   $('#pread').onclick = () => {
@@ -342,7 +362,7 @@ function openPaste() {
     confirmFound(res, res.unknown);
   };
 }
-const famName = k => isBottle(k) ? (FAMILIES[ING[k][3]] || { bitters: 'Bitters', mixer: 'Mixers' }[ING[k][3]] || 'Other') : 'In the kitchen';
+const famName = k => isBottle(k) ? GROUP_NAME(groupOf(k)) : 'In the kitchen';
 function confirmFound(res, unknown = []) {
   const byKind = {}; res.found.forEach(k => { const f = famName(k); (byKind[f] = byKind[f] || []).push(k); });
   panel.innerHTML = `<h2>Here's what he found</h2><ul class="found">${Object.entries(byKind).map(([f, l]) => `<li><b>${f}</b>${l.map(k => `<span class="fi">${ingIco(k, 22)}${esc(ING[k][0])}</span>`).join('')}</li>`).join('')}</ul>
@@ -350,7 +370,7 @@ function confirmFound(res, unknown = []) {
    <p class="lbl">Barware: tick what you have</p>
    <div class="ticks">${Object.entries(BARWARE).map(([k, v]) => `<label><input type="checkbox" value="${k}" ${res.tools.includes(k) ? 'checked' : ''}> ${v}</label>`).join('')}</div>
    <div class="row"><button class="btn ghost" id="pcancel">Not now</button><button class="btn" id="pstock">Stock the shelf</button></div>`;
-  $('#pcancel').onclick = home;
+  $('#pcancel').onclick = home; focusIn('#pstock');
   $('#pstock').onclick = async () => {
     const tools = [...panel.querySelectorAll('.ticks input:checked')].map(i => i.value);
     applyReading(res, tools); panel.hidden = true; drawShelf(true);
@@ -385,6 +405,7 @@ function openShelf(tab) {
   panel.querySelectorAll('.bhead .fb').forEach(b => b.onclick = () => { shelfTab = b.dataset.t; panel.querySelectorAll('.bhead .fb').forEach(x => x.setAttribute('aria-selected', x === b)); panel.querySelector('.bhead h2').textContent = b.textContent; fillBar(); });
   $('#pmore').onclick = openPhotos; $('#pdone').onclick = home;
   fillBar();
+  focusIn('#barBody .it');
 }
 function fillBar() {
   const box = $('#barBody'); if (!box) return;
@@ -395,7 +416,7 @@ function fillBar() {
     box.querySelectorAll('.mini').forEach(b => b.onclick = () => openRecipe(b.dataset.id));
     return;
   }
-  const fam = {}; shelfBottles().forEach(b => { const f = FAMILIES[b.family] || { bitters: 'Bitters', mixer: 'Mixers' }[b.family] || 'Other'; (fam[f] = fam[f] || []).push(b); });
+  const fam = {}; shelfBottles().forEach(b => { const f = GROUP_NAME(groupOf(b.k)); (fam[f] = fam[f] || []).push(b); });
   const outN = BAR.out.size;
   box.innerHTML = `<p class="sub">${shelfBottles().length - outN} bottles${outN ? ` · ${outN} run out` : ''}. Tap a bottle when it runs out.</p>
    <div class="bfams">${Object.entries(fam).map(([f, l]) => `<section class="bfam"><h3>${f}</h3><div class="ig">${l.map(b => `<button class="it${b.out ? ' off' : ''}" data-k="${b.k}" aria-pressed="${!b.out}" aria-label="${esc(b.style)}${b.out ? ', run out' : ''}">${ingIco(b.k, 40, { ghost: b.out })}<span>${esc(b.style)}</span>${b.out ? '<small>run out</small>' : ''}</button>`).join('')}</div></section>`).join('')}</div>
@@ -437,6 +458,7 @@ async function openMenu(tab = 'spirit') {
   panel.innerHTML = `<h2>MENU</h2><p class="menunote">${R.length} drinks · ${n} you can make now</p><div class="fbs" role="tablist">${[['spirit', 'By spirit'], ['feel', 'By feel'], ['az', 'A–Z']].map(([k, v]) => `<button class="fb" role="tab" data-t="${k}" aria-selected="${k === tab}">${v}</button>`).join('')}</div><div class="mbody"></div>`;
   panel.querySelectorAll('.fbs .fb').forEach(b => b.onclick = () => { panel.querySelectorAll('.fbs .fb').forEach(x => x.setAttribute('aria-selected', x === b)); fillMenu(b.dataset.t); });
   fillMenu(tab);
+  focusIn('.fbs .fb[aria-selected=true]');
 }
 function wireDrinks() { panel.querySelectorAll('.dc').forEach(b => b.onclick = () => openRecipe(b.dataset.id)); }
 /* Halo's A–Z ring: the letters swell under the finger (or the mouse); lift on a letter and its drinks pop out as an
@@ -587,7 +609,8 @@ function ingRow(x) {
   return `<div class="ir${ok || sub ? '' : ' miss'}"><span class="ii">${ingIco(x.k, 22, { ghost: !ok && !sub })}</span><span class="iq">${q}</span><span class="iu">${esc(unit)}</span><span class="in">${esc(name)}</span><span class="ix">${right}</span></div>`;
 }
 function openRecipe(id, chosen) {
-  const r = RB[id]; hush(); setScreen('recipe');
+  const r = RB[id]; if (!r) return home();
+  hush(); setScreen('recipe');
   document.body.classList.add('recipe-on'); cam('recipe', 900);
   golden = Math.random() < .15;
   const swaps = swapsFor(r);
@@ -612,6 +635,10 @@ function openRecipe(id, chosen) {
   $('#againDice').onclick = () => another($('#againDice .dice'));
   recipeState = { r, i: 0, chosen };
   drinkGlass(r, 0, false); goStep(0);
+  focusIn('#nextS');
+  /* if Halo's glyphs are still loading, draw them the moment they arrive */
+  if (typeof act !== 'function') ANIM.addEventListener('load', () => { if (!recipeState || recipeState.r !== r) return;
+    panel.querySelectorAll('.thumbs .th').forEach((b, n) => { b.innerHTML = glyph(r, n); }); const g = $('#glyph'); if (g) g.insertAdjacentHTML('afterbegin', glyph(r, recipeState.i)); }, { once: true });
 }
 /* "Another": Halo's dice roll, then a new barman's choice (R7 pool) */
 function another(diceBox) {
