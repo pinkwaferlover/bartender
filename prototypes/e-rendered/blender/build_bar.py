@@ -42,6 +42,11 @@ args = sys.argv[1:]
 QUICK = '--quick' in args
 ONLY = args[args.index('--only') + 1] if '--only' in args else 'all'
 PREVIEW = ONLY == 'panther'
+# --preview menu|honey|dice|bottles: build only that item, render it alone large and in the bar, write
+# nothing to img/ or layers.js (pictures go to _work/preview/). --styles a,b limits the bottles built.
+ITEM = args[args.index('--preview') + 1] if '--preview' in args else None
+STYLES = args[args.index('--styles') + 1].split(',') if '--styles' in args else None
+if ITEM: ONLY = 'preview'
 os.makedirs(OUT, exist_ok=True); os.makedirs(WORK, exist_ok=True)
 
 # ---------------------------------------------------------------- camera and the world-unit mapping
@@ -454,7 +459,8 @@ def dice():
 
 # Dionysus' panther: a real leopard model from Sketchfab (see ../CREDITS.md), CC BY 4.0.
 LEOPARD_UID = 'd02a9709556348968fef810684b4e3fa'
-LEOPARD_GLB = os.path.join(WORK, 'models', f'leopard-{LEOPARD_UID[:8]}.glb')
+MODELS = os.environ.get('BAR_MODELS', os.path.join(WORK, 'models'))   # downloaded models, kept out of git
+LEOPARD_GLB = os.path.join(MODELS, f'leopard-{LEOPARD_UID[:8]}.glb')
 
 
 def fetch_leopard():
@@ -507,6 +513,8 @@ if ONLY == 'panther':
     T['panther'] = panther()
 if ONLY in ('all', 'bg', 'touch'):
     T['menu'] = menu(); T['honey'] = honey_jar(); T['dice'] = dice(); T['panther'] = panther()
+if ITEM in ('menu', 'honey', 'dice'):
+    T[ITEM] = {'menu': menu, 'honey': honey_jar, 'dice': dice}[ITEM]()
 
 
 # ---------------------------------------------------------------- bottles: one per Style (Q6)
@@ -541,7 +549,7 @@ def read_styles():
     return out
 
 
-def make_bottle(style, colour, fam):
+def make_bottle(style, colour, fam, x=800):
     prof = PROFILES.get(fam, PROFILES['vodka']); s = BOTTLE_SCALE.get(fam, 1.04) * U
     body = lathe('bottle_' + style, [((96 - y) * s, r * s) for y, r in prof],
                  mat('btl_' + colour, colour, 0.32, coat=0.25, spec=0.35), 40)
@@ -556,7 +564,7 @@ def make_bottle(style, colour, fam):
     cap = lathe('cap', [((96 - cap_y - 2) * s, (cap_r + 1.2) * s), ((96 - cap_y + 8) * s, (cap_r + 1.2) * s)], mat('cap', '#1c1410', 0.4), 24)
     parts.append(cap)
     for p in parts:
-        p.location = P(800, 384, 0)
+        p.location = P(x, 384, 0)
         push(p, SHELF_Y)
     return parts
 
@@ -603,7 +611,7 @@ cy.use_adaptive_sampling = True; cy.adaptive_threshold = 0.02
 cy.use_denoising = True
 try: cy.denoiser = 'OPENIMAGEDENOISE'
 except Exception: pass
-cy.max_bounces = 4; cy.diffuse_bounces = 2; cy.glossy_bounces = 2; cy.transmission_bounces = 2; cy.transparent_max_bounces = 4
+cy.max_bounces = 10; cy.diffuse_bounces = 2; cy.glossy_bounces = 3; cy.transmission_bounces = 10; cy.transparent_max_bounces = 8   # glass needs the transmission bounces
 cy.caustics_reflective = False; cy.caustics_refractive = False
 cy.use_light_tree = True
 try: cy.threads_mode = 'AUTO'
@@ -701,7 +709,18 @@ def crop_alpha(png, region, k, name, q=86):
 
 
 MANIFEST_PATH = os.path.join(WORK, 'manifest.json')
-MAN = json.load(open(MANIFEST_PATH)) if os.path.exists(MANIFEST_PATH) else {}
+def read_layers_js():
+    """The committed layers.js, so a partial render (--only touch) keeps the other layers' entries."""
+    p = os.path.join(PROTO, 'layers.js')
+    if not os.path.exists(p): return {}
+    src = open(p, encoding='utf8').read()
+    a = src.index('const LAYERS = ') + len('const LAYERS = '); b = src.index(';\nconst RENDER_LOG')
+    out = json.loads(src[a:b])
+    out['renderLog'] = json.loads(src[src.index('const RENDER_LOG = ') + 19:].rstrip().rstrip(';'))
+    return out
+
+
+MAN = json.load(open(MANIFEST_PATH)) if os.path.exists(MANIFEST_PATH) else read_layers_js()
 MAN.setdefault('bg', {}); MAN.setdefault('touch', {}); MAN.setdefault('bottles', {})
 MAN['frame'] = FRAME
 MAN['counterBackY'] = round(surface_y(BACK_Y), 1)
@@ -767,6 +786,33 @@ if ONLY in ('all', 'bottles'):
         MAN['bottles'][key] = info
         for p in parts:
             bpy.data.objects.remove(p, do_unlink=True)
+
+if ONLY == 'preview':
+    # Look at it large, alone and in the bar, before it ships. Nothing here is written to img/ or layers.js.
+    from PIL import Image
+    PV = os.path.join(WORK, 'preview'); os.makedirs(PV, exist_ok=True)
+    WORLD_OBJS = [o for o in bpy.data.objects if o.type in ('MESH', 'CURVE', 'META', 'FONT') and o not in ALL_TOUCH]
+    if ITEM == 'bottles':
+        styles = read_styles()
+        if STYLES: styles = [t for t in styles if t[0] in STYLES]
+        parts = []
+        n = len(styles); step = min(52, 640 / max(n, 1))
+        for i, (key, label, colour, fam) in enumerate(styles):
+            parts += make_bottle(key, colour, fam, 800 - step * (n - 1) / 2 + i * step)
+        ALL_TOUCH = parts
+    else:
+        parts = T[ITEM]
+    reg = bbox_world(parts, 10)
+    big = {'menu': 8.0, 'honey': 7.0, 'dice': 14.0, 'bottles': 5.0}[ITEM]
+    png = render_region('preview_' + ITEM + '_alone', reg, big, parts, True, 96)
+    im = Image.open(png).convert('RGBA'); bgc = Image.new('RGBA', im.size, (38, 27, 21, 255)); bgc.alpha_composite(im)
+    bgc.convert('RGB').save(os.path.join(PV, ITEM + '-alone.png'))
+    x0, y0, x1, y1 = reg; mx_, my_ = (x0 + x1) / 2, (y0 + y1) / 2; hw, hh = max(x1 - x0, 120), max(y1 - y0, 90)
+    ctx = (mx_ - hw * 1.1, my_ - hh * 0.9, mx_ + hw * 1.1, my_ + hh * 0.75)
+    png = render_region('preview_' + ITEM + '_bar', ctx, 4.0 if ITEM != 'dice' else 8.0, WORLD_OBJS + list(parts), False, 64)
+    Image.open(png).convert('RGB').save(os.path.join(PV, ITEM + '-in-bar.png'))
+    print('[preview]', PV, json.dumps(LOG), flush=True)
+    sys.exit(0)
 
 MAN['renderLog'] = MAN.get('renderLog', [])
 MAN['renderLog'] = [x for x in MAN['renderLog'] if x['layer'] not in {l['layer'] for l in LOG}] + LOG
