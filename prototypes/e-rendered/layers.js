@@ -47,9 +47,9 @@ const LAYERS = {
  "touch": {
   "menu": {
    "src": "img/touch-menu.webp",
-   "x": 459.61,
+   "x": 459.55,
    "y": 538.38,
-   "w": 109.0,
+   "w": 108.5,
    "h": 112.0
   },
   "honey": {
@@ -61,10 +61,10 @@ const LAYERS = {
   },
   "dice": {
    "src": "img/touch-dice.webp",
-   "x": 918.91,
-   "y": 623.72,
-   "w": 38.4,
-   "h": 32.6
+   "x": 915.3,
+   "y": 623.74,
+   "w": 41.6,
+   "h": 32.4
   },
   "panther": {
    "src": "img/touch-panther.webp",
@@ -359,4 +359,4 @@ const LAYERS = {
   "quick": false
  }
 };
-const RENDER_LOG = [{"layer": "panther_preview", "px": [1313, 1352], "samples": 48, "seconds": 33.8}, {"layer": "t_menu", "px": [816, 834], "samples": 64, "seconds": 54.9}, {"layer": "t_honey", "px": [371, 570], "samples": 64, "seconds": 29.6}, {"layer": "t_dice", "px": [426, 308], "samples": 64, "seconds": 10.7}, {"layer": "t_panther", "px": [788, 811], "samples": 64, "seconds": 33.0}, {"layer": "bg_bar", "px": [2000, 2000], "samples": 64, "seconds": 311.0}, {"layer": "bg_sign", "px": [1480, 460], "samples": 64, "seconds": 63.4}, {"layer": "bg_shelf", "px": [1672, 1065], "samples": 64, "seconds": 178.5}, {"layer": "bg_mid", "px": [2222, 1232], "samples": 64, "seconds": 243.6}, {"layer": "bg_menu", "px": [1380, 1080], "samples": 48, "seconds": 108.7}, {"layer": "bg_sign_off", "px": [1480, 460], "samples": 64, "seconds": 54.1}, {"layer": "b_bourbon", "px": [182, 292], "samples": 160, "seconds": 17.4}, {"layer": "b_rye", "px": [158, 294], "samples": 160, "seconds": 9.2}, {"layer": "b_blended_scotch", "px": [169, 292], "samples": 160, "seconds": 16.6}, {"layer": "b_islay_scotch", "px": [174, 292], "samples": 160, "seconds": 8.1}, {"layer": "b_irish_whiskey", "px": [156, 294], "samples": 160, "seconds": 11.4}, {"layer": "b_london_dry_gin", "px": [112, 289], "samples": 160, "seconds": 7.6}, {"layer": "b_white_rum", "px": [156, 285], "samples": 160, "seconds": 7.4}, {"layer": "b_tequila", "px": [129, 294], "samples": 160, "seconds": 10.1}, {"layer": "b_vodka", "px": [103, 286], "samples": 160, "seconds": 7.9}, {"layer": "b_cognac", "px": [176, 289], "samples": 160, "seconds": 7.1}, {"layer": "b_sweet_vermouth", "px": [123, 274], "samples": 160, "seconds": 8.9}, {"layer": "b_dry_vermouth", "px": [122, 274], "samples": 160, "seconds": 8.9}, {"layer": "b_campari", "px": [123, 274], "samples": 160, "seconds": 6.0}, {"layer": "b_aperol", "px": [125, 274], "samples": 160, "seconds": 6.0}, {"layer": "b_amaro_nonino", "px": [124, 274], "samples": 160, "seconds": 5.9}, {"layer": "b_triple_sec", "px": [100, 286], "samples": 160, "seconds": 5.3}, {"layer": "b_amaretto", "px": [170, 289], "samples": 160, "seconds": 14.7}, {"layer": "b_cherry_heering", "px": [178, 289], "samples": 160, "seconds": 6.4}, {"layer": "b_ginger_wine", "px": [122, 274], "samples": 160, "seconds": 5.7}, {"layer": "b_coffee_liqueur", "px": [154, 285], "samples": 160, "seconds": 13.0}, {"layer": "b_angostura_bitters", "px": [96, 201], "samples": 160, "seconds": 2.7}, {"layer": "b_orange_bitters", "px": [95, 201], "samples": 160, "seconds": 2.2}, {"layer": "b_ginger_ale", "px": [101, 218], "samples": 160, "seconds": 4.2}, {"layer": "b_ginger_beer", "px": [98, 218], "samples": 160, "seconds": 3.9}, {"layer": "b_soda_water", "px": [102, 218], "samples": 160, "seconds": 8.3}, {"layer": "b_tonic_water", "px": [100, 218], "samples": 160, "seconds": 8.2}];
+const RENDER_LOG = [{"layer": "panther_preview", "px": [1313, 1352], "samples": 48, "seconds": 33.8}, {"layer": "bg_bar", "px": [2000, 2000], "samples": 64, "seconds": 311.0}, {"layer": "bg_sign", "px": [1480, 460], "samples": 64, "seconds": 63.4}, {"layer": "bg_shelf", "px": [1672, 1065], "samples": 64, "seconds": 178.5}, {"layer": "bg_mid", "px": [2222, 1232], "samples": 64, "seconds": 243.6}, {"layer": "bg_menu", "px": [1380, 1080], "samples": 48, "seconds": 108.7}, {"layer": "bg_sign_off", "px": [1480, 460], "samples": 64, "seconds": 54.1}, {"layer": "b_bourbon", "px": [182, 292], "samples": 160, "seconds": 17.4}, {"layer": "b_rye", "px": [158, 294], "samples": 160, "seconds": 9.2}, {"layer": "b_blended_scotch", "px": [169, 292], "samples": 160, "seconds": 16.6}, {"layer": "b_islay_scotch", "px": [174, 292], "samples": 160, "seconds": 8.1}, {"layer": "b_irish_whiskey", "px": [156, 294], "samples": 160, "seconds": 11.4}, {"layer": "b_london_dry_gin", "px": [112, 289], "samples": 160, "seconds": 7.6}, {"layer": "b_white_rum", "px": [156, 285], "samples": 160, "seconds": 7.4}, {"layer": "b_tequila", "px": [129, 294], "samples": 160, "seconds": 10.1}, {"layer": "b_vodka", "px": [103, 286], "samples": 160, "seconds": 7.9}, {"layer": "b_cognac", "px": [176, 289], "samples": 160, "seconds": 7.1}, {"layer": "b_sweet_vermouth", "px": [123, 274], "samples": 160, "seconds": 8.9}, {"layer": "b_dry_vermouth", "px": [122, 274], "samples": 160, "seconds": 8.9}, {"layer": "b_campari", "px": [123, 274], "samples": 160, "seconds": 6.0}, {"layer": "b_aperol", "px": [125, 274], "samples": 160, "seconds": 6.0}, {"layer": "b_amaro_nonino", "px": [124, 274], "samples": 160, "seconds": 5.9}, {"layer": "b_triple_sec", "px": [100, 286], "samples": 160, "seconds": 5.3}, {"layer": "b_amaretto", "px": [170, 289], "samples": 160, "seconds": 14.7}, {"layer": "b_cherry_heering", "px": [178, 289], "samples": 160, "seconds": 6.4}, {"layer": "b_ginger_wine", "px": [122, 274], "samples": 160, "seconds": 5.7}, {"layer": "b_coffee_liqueur", "px": [154, 285], "samples": 160, "seconds": 13.0}, {"layer": "b_angostura_bitters", "px": [96, 201], "samples": 160, "seconds": 2.7}, {"layer": "b_orange_bitters", "px": [95, 201], "samples": 160, "seconds": 2.2}, {"layer": "b_ginger_ale", "px": [101, 218], "samples": 160, "seconds": 4.2}, {"layer": "b_ginger_beer", "px": [98, 218], "samples": 160, "seconds": 3.9}, {"layer": "b_soda_water", "px": [102, 218], "samples": 160, "seconds": 8.3}, {"layer": "b_tonic_water", "px": [100, 218], "samples": 160, "seconds": 8.2}, {"layer": "t_menu", "px": [814, 833], "samples": 64, "seconds": 47.2}, {"layer": "t_honey", "px": [371, 570], "samples": 64, "seconds": 24.7}, {"layer": "t_dice", "px": [451, 310], "samples": 64, "seconds": 10.1}, {"layer": "t_panther", "px": [788, 811], "samples": 64, "seconds": 28.7}];
