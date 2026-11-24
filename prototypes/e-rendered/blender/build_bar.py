@@ -42,6 +42,11 @@ args = sys.argv[1:]
 QUICK = '--quick' in args
 ONLY = args[args.index('--only') + 1] if '--only' in args else 'all'
 PREVIEW = ONLY == 'panther'
+# --preview menu|honey|dice|bottles: build only that item, render it alone large and in the bar, write
+# nothing to img/ or layers.js (pictures go to _work/preview/). --styles a,b limits the bottles built.
+ITEM = args[args.index('--preview') + 1] if '--preview' in args else None
+STYLES = args[args.index('--styles') + 1].split(',') if '--styles' in args else None
+if ITEM: ONLY = 'preview'
 os.makedirs(OUT, exist_ok=True); os.makedirs(WORK, exist_ok=True)
 
 # ---------------------------------------------------------------- camera and the world-unit mapping
@@ -366,95 +371,828 @@ WORLD += cparts
 group('counterfront_details', cparts, FRONT_Y - 0.001)
 
 # ---------------------------------------------------------------- touchables: true colour (Q7)
-M_GREEN = mat('menu_green', '#1f5a42', 0.45, coat=0.3)
-M_GOLD = mat('gold', '#d8b25a', 0.25, 1.0)
-M_HONEY = mat('honey', '#e0951c', 0.12, coat=1.0)
-M_JAR = mat('jarlid', '#f0e7d8', 0.7)
-M_TWINE = mat('twine', '#a3172a', 0.6)
-M_DIPPER = mat('dipper', '#b98552', 0.5)
-M_IVORY = mat('ivory', '#f3ead6', 0.25, coat=0.6)
-M_PIP = mat('pip', '#b3172a', 0.3)
+MENU_W, MENU_H, MENU_T, MENU_R = 1.0, 1.08, 0.028, 0.045   # the board, Blender units: about 30 x 32 cm, 8 mm thick
+MENU_SOFT = 8                                              # watts, the menu's own soft light
+
+
+def _menu_grain(n, L, scale=115.0):
+    """Pebbled leather grain: Voronoi cells (object space), their edges cut a touch deeper by a fine noise."""
+    tc = n.new('ShaderNodeTexCoord')
+    wn = n.new('ShaderNodeTexNoise'); wn.inputs['Scale'].default_value = 40.0; wn.inputs['Detail'].default_value = 3
+    L.new(tc.outputs['Object'], wn.inputs['Vector'])
+    mx = n.new('ShaderNodeMix'); mx.data_type = 'VECTOR'; mx.inputs['Factor'].default_value = 0.012
+    L.new(tc.outputs['Object'], mx.inputs['A']); L.new(wn.outputs['Color'], mx.inputs['B'])
+    vo = n.new('ShaderNodeTexVoronoi'); vo.feature = 'F1'; vo.inputs['Scale'].default_value = scale
+    vo.inputs['Randomness'].default_value = 0.9
+    L.new(mx.outputs['Result'], vo.inputs['Vector'])
+    pw = n.new('ShaderNodeMath'); pw.operation = 'POWER'; pw.inputs[1].default_value = 0.55
+    L.new(vo.outputs['Distance'], pw.inputs[0])
+    inv = n.new('ShaderNodeMath'); inv.operation = 'SUBTRACT'; inv.inputs[0].default_value = 1.0
+    L.new(pw.outputs[0], inv.inputs[1])
+    return inv.outputs[0]          # 1 on the pebble tops, 0 in the creases
+
+
+def _menu_leather_back():
+    """Plain bottle-green leather for the back and edges of the board (no print)."""
+    if 'menu_green' in MATS: return MATS['menu_green']
+    m = bpy.data.materials.new('menu_green'); m.use_nodes = True; n, L = m.node_tree.nodes, m.node_tree.links
+    b = n['Principled BSDF']
+    b.inputs['Base Color'].default_value = srgb('#0c5536'); b.inputs['Roughness'].default_value = 0.52
+    b.inputs['Sheen Weight'].default_value = 0.12; b.inputs['Sheen Tint'].default_value = srgb('#3f8f68')
+    b.inputs['Specular IOR Level'].default_value = 0.3
+    g = _menu_grain(n, L)
+    bu = n.new('ShaderNodeBump'); bu.inputs['Strength'].default_value = 0.3; bu.inputs['Distance'].default_value = 0.0012
+    L.new(g, bu.inputs['Height']); L.new(bu.outputs['Normal'], b.inputs['Normal'])
+    MATS['menu_green'] = m
+    return m
+
+
+def _menu_brass():
+    """Polished brass for the stand: metallic, evenly polished (roughness ~0.13; a blotchy roughness read as
+    dirty bronze), only a faint brushed grain along its length."""
+    if 'gold' in MATS: return MATS['gold']
+    m = bpy.data.materials.new('gold'); m.use_nodes = True; n, L = m.node_tree.nodes, m.node_tree.links
+    b = n['Principled BSDF']
+    b.inputs['Base Color'].default_value = srgb('#e0b25a'); b.inputs['Metallic'].default_value = 1.0
+    b.inputs['Roughness'].default_value = 0.13
+    tc = n.new('ShaderNodeTexCoord'); mp = n.new('ShaderNodeMapping'); mp.inputs['Scale'].default_value = (2, 90, 90)
+    L.new(tc.outputs['Object'], mp.inputs[0])
+    br = n.new('ShaderNodeTexNoise'); br.inputs['Scale'].default_value = 6.0; br.inputs['Detail'].default_value = 6
+    L.new(mp.outputs[0], br.inputs['Vector'])
+    bu = n.new('ShaderNodeBump'); bu.inputs['Strength'].default_value = 0.03; bu.inputs['Distance'].default_value = 0.0004
+    L.new(br.outputs['Fac'], bu.inputs['Height']); L.new(bu.outputs['Normal'], b.inputs['Normal'])
+    MATS['gold'] = m
+    return m
+
+
+def _menu_plate_brass():
+    """The base plate: the same brass, but older and duller (it sits in the counter's shadow and gets handled),
+    darkening to near black where it meets the counter, so it sits down instead of reading as a pale step."""
+    if 'menu_plate' in MATS: return MATS['menu_plate']
+    m = bpy.data.materials.new('menu_plate'); m.use_nodes = True; n, L = m.node_tree.nodes, m.node_tree.links
+    b = n['Principled BSDF']; b.inputs['Metallic'].default_value = 1.0; b.inputs['Roughness'].default_value = 0.34
+    ao = n.new('ShaderNodeAmbientOcclusion'); ao.inputs['Distance'].default_value = 0.03; ao.samples = 8
+    cr = n.new('ShaderNodeValToRGB'); e = cr.color_ramp.elements
+    e[0].position, e[0].color = 0.35, srgb('#1e140a'); e[1].position, e[1].color = 0.9, srgb('#6a5028')
+    L.new(ao.outputs['AO'], cr.inputs[0]); L.new(cr.outputs['Color'], b.inputs['Base Color'])
+    MATS['menu_plate'] = m
+    return m
+
+
+M_GREEN = _menu_leather_back()
+M_GOLD = _menu_brass()
 
 
 def menu_texture():
-    """The menu card's face, drawn as a texture: green card, gold rule, MENU, three gold lines."""
-    from PIL import Image, ImageDraw, ImageFont
-    W, H = 512, 640; im = Image.new('RGB', (W, H), '#1f5a42'); d = ImageDraw.Draw(im)
-    d.rectangle([0, 0, W, 230], fill='#2a6b50')
-    d.rectangle([14, 14, W - 15, H - 15], outline='#d8b25a', width=8)
-    d.rectangle([60, 70, W - 60, 76], fill='#d8b25a')
-    f = ImageFont.truetype(FONT, 150) if os.path.exists(FONT) else ImageFont.load_default()
-    d.text((W / 2, 168), 'MENU', font=f, fill='#e2bf64', anchor='mm')
-    for i, (a, b) in enumerate(((90, 422), (120, 392), (90, 422))):
-        d.rectangle([a, 330 + i * 70, b, 342 + i * 70], fill='#d8b25a')
-    p = os.path.join(WORK, 'menu_face.png'); im.save(p)
-    return p
+    """The board's leather face at 2K, drawn with PIL. Two maps, same layout:
+    menu_face.png (colour: bottle-green leather, darker and burnished toward the turned edge, tonal stitching,
+    gold foil) and menu_data.png (R foil mask -> metallic, G roughness, B height: the foil and the stitch
+    channel are debossed into the leather). Foil: a thin and a thick rule round the face, MENU in Bebas Neue,
+    a short rule with a lozenge under it, and a bunch of grapes on a vine below."""
+    from PIL import Image, ImageDraw, ImageFont, ImageFilter
+    import numpy as np
+    W = 2048; H = int(round(W * MENU_H / MENU_W)); S = 2; W2, H2 = W * S, H * S
+    px = W2 / MENU_W                                       # supersampled pixels per Blender unit
+    foil = Image.new('L', (W2, H2), 0); fd = ImageDraw.Draw(foil)
+    groove = Image.new('L', (W2, H2), 0); gd = ImageDraw.Draw(groove)
+    thread = Image.new('L', (W2, H2), 0); td = ImageDraw.Draw(thread)
+    R = MENU_R * px
+
+    def rrect(drw, inset, width, fill=255):
+        drw.rounded_rectangle([inset, inset, W2 - 1 - inset, H2 - 1 - inset], radius=max(4, R - inset * 0.55), outline=fill, width=int(width))
+
+    # a creased line just in from the turned edge, then the saddle stitch in its channel
+    rrect(gd, 0.010 * px, 0.0028 * px)
+    si = 0.024 * px; rrect(gd, si, 0.0055 * px, 150)
+    # stitches: walk the inset rounded rectangle and lay short slanted dashes
+    rr = max(4, R - si * 0.55); x0, y0, x1, y1 = si, si, W2 - 1 - si, H2 - 1 - si
+    path = []
+    def seg(ax, ay, bx, by, n):
+        for i in range(n): path.append((ax + (bx - ax) * i / n, ay + (by - ay) * i / n))
+    def arc(cx, cy, a0, n):
+        for i in range(n):
+            a = math.radians(a0 + 90 * i / n); path.append((cx + rr * math.cos(a), cy + rr * math.sin(a)))
+    seg(x0 + rr, y0, x1 - rr, y0, 900); arc(x1 - rr, y0 + rr, -90, 60)
+    seg(x1, y0 + rr, x1, y1 - rr, 960); arc(x1 - rr, y1 - rr, 0, 60)
+    seg(x1 - rr, y1, x0 + rr, y1, 900); arc(x0 + rr, y1 - rr, 90, 60)
+    seg(x0, y1 - rr, x0, y0 + rr, 960); arc(x0 + rr, y0 + rr, 180, 60)
+    P_ = np.array(path); d = np.r_[0, np.cumsum(np.hypot(*np.diff(P_, axis=0).T))]
+    pitch = 0.0105 * px; dash = 0.0072 * px; k = 0
+    while k * pitch + dash < d[-1]:
+        a = np.interp(k * pitch, d, np.arange(len(P_))); b = np.interp(k * pitch + dash, d, np.arange(len(P_)))
+        pa, pb = P_[int(a)], P_[min(int(b), len(P_) - 1)]
+        tw = 0.0016 * px                                    # a slight twist: the thread lies at an angle
+        td.line([(pa[0] - tw, pa[1] - tw), (pb[0] + tw, pb[1] + tw)], fill=255, width=int(0.0042 * px))
+        k += 1
+    # foil frame: a thin rule and a thick one
+    rrect(fd, 0.052 * px, 0.0032 * px)
+    rrect(fd, 0.064 * px, 0.0085 * px)
+    # MENU, tracked out, centred a little above the middle
+    cx = W2 / 2; cy = 0.40 * H2
+    size = 200
+    def word_w(f, tr): return sum(f.getlength(ch) for ch in 'MENU') + tr * 3
+    while True:
+        f = ImageFont.truetype(FONT, size); tr = 0.16 * size
+        if word_w(f, tr) > 0.56 * W2: break
+        size += 8
+    x = cx - word_w(f, tr) / 2
+    for ch in 'MENU':
+        fd.text((x, cy), ch, font=f, fill=255, anchor='ls'); x += f.getlength(ch) + tr
+    capb = f.getbbox('M', anchor='ls'); cap = -capb[1]
+    # rules above and below the word, each with a lozenge
+    for ry, half in ((cy - cap - 0.075 * H2, 0.17), (cy + 0.07 * H2, 0.24)):
+        hw = half * W2; th = 0.0032 * px
+        fd.rectangle([cx - hw, ry - th / 2, cx - 0.03 * W2, ry + th / 2], fill=255)
+        fd.rectangle([cx + 0.03 * W2, ry - th / 2, cx + hw, ry + th / 2], fill=255)
+        z = 0.016 * W2; fd.polygon([(cx - z, ry), (cx, ry - z * 0.7), (cx + z, ry), (cx, ry + z * 0.7)], fill=255)
+        for sx in (-1, 1): fd.ellipse([cx + sx * hw - th * 1.6, ry - th * 1.6, cx + sx * hw + th * 1.6, ry + th * 1.6], fill=255)
+    # the vine device, drawn to survive at ~40 px: one bunch of six big grapes, each kept apart by a clear
+    # gap of leather (the keyline), on a short curved stem, and one plain five-lobed vine leaf beside it
+    gx, gy = cx - 0.025 * W2, 0.70 * H2; gr = 0.04 * W2
+    for ri, nrow in enumerate((3, 2, 1)):
+        yy = gy + ri * gr * 1.78
+        for j in range(nrow):
+            xx = gx + (j - (nrow - 1) / 2) * gr * 2.05
+            fd.ellipse([xx - gr * 0.88, yy - gr * 0.88, xx + gr * 0.88, yy + gr * 0.88], fill=255)
+    lw = int(0.0075 * px)
+    def bez(p0, p1, p2, n=40):
+        return [((1 - t) ** 2 * p0[0] + 2 * t * (1 - t) * p1[0] + t * t * p2[0],
+                 (1 - t) ** 2 * p0[1] + 2 * t * (1 - t) * p1[1] + t * t * p2[1]) for t in (i / n for i in range(n + 1))]
+    top = (gx + 0.012 * W2, gy - 2.1 * gr)
+    fd.line(bez((gx, gy - 0.85 * gr), (gx - 0.004 * W2, gy - 1.7 * gr), top, 20), fill=255, width=lw, joint='curve')
+    # the leaf: five rounded lobes (three big), a heart notch at the stalk, joined to the top of the stem
+    lx, ly, rad, rot = gx + 0.105 * W2, gy - 2.3 * gr, 0.078 * W2, math.radians(-25)
+    pts = []
+    for i in range(200):
+        t = 2 * math.pi * i / 200
+        tt = (t + math.pi) % (2 * math.pi) - math.pi          # -pi..pi, 0 at the leaf's tip
+        g = lambda c, w: math.exp(-((tt - c) / w) ** 2)
+        lobes = 0.5 + 0.5 * max(g(0, 0.42), 0.9 * g(1.2, 0.4), 0.9 * g(-1.2, 0.4), 0.6 * g(2.25, 0.35), 0.6 * g(-2.25, 0.35))
+        notch = 1 - 0.55 * math.exp(-((abs(tt) - math.pi) / 0.3) ** 2)
+        rr_ = rad * lobes * notch
+        pts.append((lx + rr_ * math.cos(t + rot), ly + rr_ * math.sin(t + rot)))
+    fd.polygon(pts, fill=255)
+    bx_, by_ = lx + 0.45 * rad * math.cos(rot + math.pi), ly + 0.45 * rad * math.sin(rot + math.pi)
+    for a_ in (0.0, 1.2, -1.2):                  # three main veins cut back out of the foil
+        fd.line([(bx_, by_), (lx + 0.62 * rad * math.cos(rot + a_), ly + 0.62 * rad * math.sin(rot + a_))], fill=0, width=max(4, lw // 2))
+    fd.line([top, (bx_, by_)], fill=255, width=int(lw * 0.9))
+
+    def down(im, blur=0.0):
+        im = im.resize((W, H), Image.LANCZOS)
+        return np.asarray(im.filter(ImageFilter.GaussianBlur(blur)) if blur else im).astype(np.float32) / 255
+    fm, gm, tm = down(foil), down(groove), down(thread)
+    fsoft = down(foil, 2.2)                                  # the stamp's soft shoulder
+    # leather: low-frequency mottle, a little darker and more burnished toward the turned edge
+    rng = np.random.default_rng(7)
+    def lowfreq(n, s):
+        a = Image.fromarray((rng.random((n, int(n * H / W))) * 255).astype('uint8')).resize((W, H), Image.BICUBIC)
+        return np.asarray(a.filter(ImageFilter.GaussianBlur(s))).astype(np.float32) / 255
+    mott = 0.6 * lowfreq(24, 30) + 0.4 * lowfreq(90, 6)
+    yy, xx = np.mgrid[0:H, 0:W].astype(np.float32)
+    Rp = MENU_R * W / MENU_W
+    qx = np.abs(xx - W / 2) - (W / 2 - Rp); qy = np.abs(yy - H / 2) - (H / 2 - Rp)
+    sdf = np.hypot(np.maximum(qx, 0), np.maximum(qy, 0)) + np.minimum(np.maximum(qx, qy), 0) - Rp   # <0 inside
+    edge = np.clip(1 + sdf / (0.035 * W), 0, 1) ** 2           # 1 at the edge, 0 a few cm in
+    green = np.array([0x0c, 0x5e, 0x3c], np.float32) / 255
+    lea = green[None, None] * (0.9 + 0.2 * mott[..., None]) * (1 - 0.32 * edge[..., None])
+    lea = lea * (1 - 0.35 * gm[..., None])                     # the crease and stitch channel sit darker
+    thr = np.array([0x2a, 0x6e, 0x4c], np.float32) / 255
+    lea = lea * (1 - tm[..., None]) + thr * tm[..., None] * (0.9 + 0.2 * mott[..., None])
+    gold = np.array([0xe8, 0xb2, 0x3e], np.float32) / 255
+    gold = gold[None, None] * (0.94 + 0.12 * lowfreq(60, 4)[..., None])
+    col = lea * (1 - fm[..., None]) + gold * fm[..., None]
+    col = col * (1.04 - 0.1 * (yy / H))[..., None]               # a soft fall-off down the face: not a flat print
+    rough = 0.55 + 0.1 * (mott - 0.5) - 0.12 * edge             # leather; burnished edge
+    rough = rough * (1 - tm) + 0.7 * tm
+    rough = rough * (1 - fm) + (0.24 + 0.1 * mott) * fm          # foil
+    height = 0.75 - 0.55 * fsoft - 0.35 * gm + 0.2 * tm
+    data = np.stack([fm, np.clip(rough, 0, 1), np.clip(height, 0, 1)], -1)
+    pc = os.path.join(WORK, 'menu_face.png'); pdt = os.path.join(WORK, 'menu_data.png')
+    Image.fromarray((np.clip(col, 0, 1) * 255).astype('uint8')).save(pc)
+    Image.fromarray((data * 255).astype('uint8')).save(pdt)
+    return pc, pdt
+
+
+def _menu_face_material():
+    pc, pdt = menu_texture()
+    m = bpy.data.materials.new('menu_face'); m.use_nodes = True; n, L = m.node_tree.nodes, m.node_tree.links
+    b = n['Principled BSDF']
+    uv = n.new('ShaderNodeTexCoord')
+    tc = n.new('ShaderNodeTexImage'); tc.image = bpy.data.images.load(pc); tc.interpolation = 'Cubic'
+    td = n.new('ShaderNodeTexImage'); td.image = bpy.data.images.load(pdt); td.image.colorspace_settings.name = 'Non-Color'
+    td.interpolation = 'Cubic'
+    for t in (tc, td): L.new(uv.outputs['UV'], t.inputs['Vector'])
+    sp = n.new('ShaderNodeSeparateColor'); L.new(td.outputs['Color'], sp.inputs[0])
+    L.new(tc.outputs['Color'], b.inputs['Base Color'])
+    L.new(sp.outputs['Red'], b.inputs['Metallic'])
+    L.new(sp.outputs['Green'], b.inputs['Roughness'])
+    inv = n.new('ShaderNodeMath'); inv.operation = 'SUBTRACT'; inv.inputs[0].default_value = 1.0; L.new(sp.outputs['Red'], inv.inputs[1])
+    sh = n.new('ShaderNodeMath'); sh.operation = 'MULTIPLY'; sh.inputs[1].default_value = 0.12; L.new(inv.outputs[0], sh.inputs[0])
+    L.new(sh.outputs[0], b.inputs['Sheen Weight']); b.inputs['Sheen Tint'].default_value = srgb('#3f8f68')
+    b.inputs['Specular IOR Level'].default_value = 0.3   # leather's sheen stays soft; the key must not grey the green
+    # the stamp and the stitch channel (from the map), then the pebble grain, weaker on the foil
+    b1 = n.new('ShaderNodeBump'); b1.inputs['Strength'].default_value = 1.0; b1.inputs['Distance'].default_value = 0.0025
+    L.new(sp.outputs['Blue'], b1.inputs['Height'])
+    g = _menu_grain(n, L)
+    gw = n.new('ShaderNodeMath'); gw.operation = 'MULTIPLY_ADD'; gw.inputs[1].default_value = -0.7; gw.inputs[2].default_value = 1.0
+    L.new(sp.outputs['Red'], gw.inputs[0])
+    gs = n.new('ShaderNodeMath'); gs.operation = 'MULTIPLY'; L.new(g, gs.inputs[0]); L.new(gw.outputs[0], gs.inputs[1])
+    b2 = n.new('ShaderNodeBump'); b2.inputs['Strength'].default_value = 0.55; b2.inputs['Distance'].default_value = 0.0012
+    L.new(gs.outputs[0], b2.inputs['Height']); L.new(b1.outputs['Normal'], b2.inputs['Normal'])
+    L.new(b2.outputs['Normal'], b.inputs['Normal'])
+    return m
+
+
+def _menu_block(name, x0, x1, y0, y1, z0, z1, material, bevel=0.0, segs=3):
+    """A box in local Blender units (x across, y depth, z up)."""
+    vs = [(x, y, z) for z in (z0, z1) for (x, y) in ((x0, y0), (x1, y0), (x1, y1), (x0, y1))]
+    ob = mesh_obj(name, vs, [(3, 2, 1, 0), (4, 5, 6, 7), (0, 1, 5, 4), (1, 2, 6, 5), (2, 3, 7, 6), (3, 0, 4, 7)], material)
+    if bevel: add_bevel(ob, bevel, segs); smooth(ob)
+    return ob
 
 
 def menu():
-    """A standing tent card, B's shape (108 wide at the base, 76 at the top, 104 high), moved left to x 460..568."""
+    """A bar menu on the counter: a leather-covered board (deep bottle-green pebbled leather, stitched round
+    its turned edge, gold foil frame, MENU and a vine device stamped into it) leaning back in a polished brass
+    stand: a base plate with a front lip the board sits behind, and a strut behind it."""
     Y = -0.75; yb = surface_y(Y)
-    m = bpy.data.materials.new('menu_face'); m.use_nodes = True; nt = m.node_tree
-    tex = nt.nodes.new('ShaderNodeTexImage'); tex.image = bpy.data.images.load(menu_texture())
-    b = nt.nodes['Principled BSDF']; nt.links.new(tex.outputs['Color'], b.inputs['Base Color'])
-    b.inputs['Roughness'].default_value = 0.42; b.inputs['Coat Weight'].default_value = 0.3
-    h = 104; tilt = 0.24
-    vs = [P(460, yb, -tilt), P(568, yb, -tilt), P(552, yb - h, 0), P(476, yb - h, 0)]
-    o = P(514, yb, 0); vs = [v - o for v in vs]
-    face = mesh_obj('menu_face', vs, [(0, 1, 2, 3)], m); face.location = o
-    uv = face.data.uv_layers.new(); [setattr(uv.data[i], 'uv', c) for i, c in enumerate(((0, 0), (1, 0), (1, 1), (0, 1)))]
-    sol = face.modifiers.new('sol', 'SOLIDIFY'); sol.thickness = 0.03; sol.offset = 1
-    face.data.materials.append(M_GREEN); sol.material_offset = 1; sol.material_offset_rim = 1
-    back = mesh_obj('menu_back', [P(460, yb, tilt) - o, P(568, yb, tilt) - o, P(552, yb - h, 0) - o, P(476, yb - h, 0) - o],
-                    [(3, 2, 1, 0)], M_GREEN); back.location = o
-    sb = back.modifiers.new('sol', 'SOLIDIFY'); sb.thickness = 0.03
-    parts = [face, back]
-    g = group('menu', parts, Y)
+    o = P(514, yb, 0)
+    face_m = _menu_face_material()
+    # the board: a rounded rectangle 8 mm thick, edges rounded over by a bevel (the leather turned round)
+    bm = bmesh.new(); outline = []
+    for cx_, cz_, a0 in ((MENU_W / 2 - MENU_R, MENU_R, -90), (MENU_W / 2 - MENU_R, MENU_H - MENU_R, 0),
+                         (-MENU_W / 2 + MENU_R, MENU_H - MENU_R, 90), (-MENU_W / 2 + MENU_R, MENU_R, 180)):
+        for i in range(9):
+            a = math.radians(a0 + 90 * i / 8); outline.append((cx_ + MENU_R * math.cos(a), cz_ + MENU_R * math.sin(a)))
+    fr = [bm.verts.new((x, 0.0, z)) for x, z in outline]
+    bk = [bm.verts.new((x, MENU_T, z)) for x, z in outline]
+    front = bm.faces.new(list(reversed(fr))); back = bm.faces.new(bk)
+    nO = len(outline)
+    for i in range(nO):
+        j = (i + 1) % nO; bm.faces.new((fr[i], fr[j], bk[j], bk[i]))
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    uvl = bm.loops.layers.uv.new()
+    for f in bm.faces:
+        for lp in f.loops:
+            v = lp.vert.co; lp[uvl].uv = ((v.x + MENU_W / 2) / MENU_W, v.z / MENU_H)
+    me = bpy.data.meshes.new('menu_board'); bm.to_mesh(me); bm.free()
+    board = bpy.data.objects.new('menu_board', me); link(board)
+    board.data.materials.append(face_m); board.data.materials.append(M_GREEN)
+    for p in board.data.polygons:
+        if p.normal.y > 0.5: p.material_index = 1
+    bv = add_bevel(board, 0.008, 4); bv.harden_normals = False; smooth(board)
+    board.modifiers.new('wn', 'WEIGHTED_NORMAL').keep_sharp = True
+    board.rotation_euler = (math.radians(-9), 0, 0)
+    board.location = o + Vector((0, -0.045, 0.016))
+    # the brass stand: base plate, front lip, a rod strut from the board's back down to the counter
+    plate = _menu_block('menu_plate', -0.525, 0.525, -0.074, 0.11, 0.0, 0.011, _menu_plate_brass(), 0.005)
+    # the lip: a rounded-over bar (the bevel is half its thickness: a round top edge that carries one clean
+    # highlight line) leaning back 8 degrees so its face mirrors the strip light rather than the dark counter
+    lip = _menu_block('menu_lip', -0.53, 0.53, -0.011, 0.011, 0.0, 0.07, M_GOLD, 0.0105, 6)
+    plate.location = o; lip.location = o + Vector((0, -0.071, 0.0)); lip.rotation_euler = (math.radians(-8), 0, 0)
+    top = Vector((0, MENU_T * math.cos(math.radians(9)) + 0.58 * math.sin(math.radians(9)) - 0.045 + 0.004, 0.58 + 0.016))
+    st = curve_obj('menu_strut', [[tuple(o + top), tuple(o + Vector((0, 0.24, 0.3))), tuple(o + Vector((0, 0.40, 0.01)))]], 0.011, M_GOLD)
+    st = _bake_curve(st)
+    hinge = _menu_block('menu_hinge', -0.05, 0.05, 0.0, 0.012, -0.04, 0.04, M_GOLD, 0.004)
+    hinge.location = o + top + Vector((0, -0.004, 0)); hinge.rotation_euler = (math.radians(-9), 0, 0)
+    foot = _menu_block('menu_foot', -0.045, 0.045, 0.37, 0.43, 0.0, 0.01, M_GOLD, 0.004); foot.location = o
+    parts = [board, plate, lip, st, hinge, foot]
+    group('menu', parts, Y)
+    # a soft warm light for the menu alone (light linking), where the foil mirrors it back to the camera:
+    # in front, a little above and left of the eye line, so MENU and the frame catch it as a glint
+    rc = bpy.data.collections.new('menu_lit')
+    for ob in parts: rc.objects.link(ob)
+    bpy.context.view_layer.update()
+    c0 = board.matrix_world @ Vector((0, 0, MENU_H * 0.5))
+    ld = bpy.data.lights.new('menu_soft', 'AREA'); ld.energy = MENU_SOFT; ld.color = srgb('#ffe0ad')[:3]
+    ld.shape = 'RECTANGLE'; ld.size = 1.4; ld.size_y = 0.7
+    lo = bpy.data.objects.new('menu_soft', ld); link(lo)
+    lo.location = c0 + Vector((-0.45, -3.4, 0.75))
+    lo.rotation_euler = (c0 - lo.location).to_track_quat('-Z', 'Y').to_euler()
+    lo.visible_camera = False
+    lo.light_linking.receiver_collection = rc
+    # a long thin strip light in front of the stand, a little above it, linked to the brass lip and strut only:
+    # the polished brass mirrors it as one clean warm line along the lip's rounded top and a glow down its face
+    bc = bpy.data.collections.new('menu_brass_lit')
+    for ob in (lip, st, hinge): bc.objects.link(ob)
+    c1 = lip.matrix_world @ Vector((0, 0, 0.05))
+    sd = bpy.data.lights.new('menu_strip', 'AREA'); sd.energy = MENU_STRIP; sd.color = srgb('#ffd59a')[:3]
+    sd.shape = 'RECTANGLE'; sd.size = 2.6; sd.size_y = 0.14
+    so = bpy.data.objects.new('menu_strip', sd); link(so)
+    so.location = c1 + Vector((0.2, -2.6, 0.55))
+    so.rotation_euler = (c1 - so.location).to_track_quat('-Z', 'Y').to_euler()
+    so.visible_camera = False; so.light_linking.receiver_collection = bc
     return parts
+
+
+MENU_STRIP = 8.0    # watts, the brass lip's strip light
+
+
+# ---- honey jar: a glass jar of honey with a turned-wood dipper (touchable, true colour)
+def _revolve(name, profile, material, segs=64):
+    """Revolve (height, radius) about local Z, in order; a point with radius 0 becomes a pole.
+    Unlike lathe() this takes a closed outline (outside up, over the lip, inside down), so walls have thickness."""
+    bm = bmesh.new(); rings = []
+    for h, r in profile:
+        if r <= 1e-6: rings.append([bm.verts.new((0, 0, h))]); continue
+        rings.append([bm.verts.new((r * math.cos(2 * math.pi * i / segs), r * math.sin(2 * math.pi * i / segs), h)) for i in range(segs)])
+    for a, b in zip(rings, rings[1:]):
+        for i in range(segs):
+            j = (i + 1) % segs
+            if len(a) == 1: bm.faces.new((a[0], b[i], b[j]))
+            elif len(b) == 1: bm.faces.new((a[i], b[0], a[j]))
+            else: bm.faces.new((a[i], b[i], b[j], a[j]))
+    for ring in (rings[0], rings[-1]):
+        if len(ring) > 1: bm.faces.new(ring)
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    me = bpy.data.meshes.new(name); bm.to_mesh(me); bm.free()
+    ob = bpy.data.objects.new(name, me); link(ob); ob.data.materials.append(material); smooth(ob)
+    return ob
+
+
+def _bake_curve(ob):
+    """A curve as a plain mesh object (curve bounding boxes ignore the bevel; meshes keep bbox_world honest)."""
+    bpy.context.view_layer.update()
+    me = bpy.data.meshes.new_from_object(ob.evaluated_get(bpy.context.evaluated_depsgraph_get()))
+    mo = bpy.data.objects.new(ob.name, me); link(mo); mo.matrix_world = ob.matrix_world.copy()
+    nm = ob.name; bpy.data.objects.remove(ob, do_unlink=True); mo.name = nm; smooth(mo)
+    return mo
+
+
+def _noise(n, L, scale, detail=4, stretch=None):
+    tc = n.new('ShaderNodeTexCoord'); nz = n.new('ShaderNodeTexNoise')
+    nz.inputs['Scale'].default_value = scale; nz.inputs['Detail'].default_value = detail
+    if stretch:
+        mp = n.new('ShaderNodeMapping'); mp.inputs['Scale'].default_value = stretch
+        L.new(tc.outputs['Object'], mp.inputs[0]); L.new(mp.outputs[0], nz.inputs['Vector'])
+    else:
+        L.new(tc.outputs['Object'], nz.inputs['Vector'])
+    return nz
+
+
+def _ramp(n, L, src, stops):
+    cr = n.new('ShaderNodeValToRGB'); e = cr.color_ramp.elements
+    e[0].position, e[0].color = stops[0]; e[1].position, e[1].color = stops[1]
+    for pos, col in stops[2:]:
+        e.new(pos).color = col
+    L.new(src, cr.inputs[0]); return cr
+
+
+def _shadow_pass(m, tint=(1, 1, 1, 1)):
+    """Let shadow rays through a clear material (caustics are off, so glass would otherwise be opaque to light
+    and everything inside the jar would sit in the dark). The honey's volume still absorbs along the way."""
+    n, L = m.node_tree.nodes, m.node_tree.links
+    out = n['Material Output']; b = n['Principled BSDF']
+    lp = n.new('ShaderNodeLightPath'); tr = n.new('ShaderNodeBsdfTransparent'); tr.inputs['Color'].default_value = tint
+    mx = n.new('ShaderNodeMixShader')
+    L.new(lp.outputs['Is Shadow Ray'], mx.inputs[0]); L.new(b.outputs[0], mx.inputs[1]); L.new(tr.outputs[0], mx.inputs[2])
+    L.new(mx.outputs[0], out.inputs['Surface'])
+
+
+def _hex_cells(n, L, vec, scale):
+    """Distance from the centre of the nearest cell of a hexagonal (honeycomb) lattice wrapped round the
+    jar: 0 at a cell's centre, about 0.5 on its walls. vec is object space; u runs round the jar."""
+    sp = n.new('ShaderNodeSeparateXYZ'); L.new(vec, sp.inputs[0])
+    at = n.new('ShaderNodeMath'); at.operation = 'ARCTAN2'; L.new(sp.outputs['Y'], at.inputs[0]); L.new(sp.outputs['X'], at.inputs[1])
+    u = n.new('ShaderNodeMath'); u.operation = 'MULTIPLY_ADD'; L.new(at.outputs[0], u.inputs[0])
+    u.inputs[1].default_value = round(0.3 * scale * 2 * math.pi) / (2 * math.pi)   # a whole number of cells round
+    u.inputs[2].default_value = 100.0
+    v = n.new('ShaderNodeMath'); v.operation = 'MULTIPLY_ADD'; L.new(sp.outputs['Z'], v.inputs[0]); v.inputs[1].default_value = scale; v.inputs[2].default_value = 100.0
+    cv = n.new('ShaderNodeCombineXYZ'); L.new(u.outputs[0], cv.inputs[0]); L.new(v.outputs[0], cv.inputs[1])
+    R = (1.0, math.sqrt(3), 0.0); H = (0.5, math.sqrt(3) / 2, 0.0)
+    def wrap(src):
+        m = n.new('ShaderNodeVectorMath'); m.operation = 'MODULO'; L.new(src, m.inputs[0]); m.inputs[1].default_value = R
+        s_ = n.new('ShaderNodeVectorMath'); s_.operation = 'SUBTRACT'; L.new(m.outputs[0], s_.inputs[0]); s_.inputs[1].default_value = H
+        ln = n.new('ShaderNodeVectorMath'); ln.operation = 'LENGTH'; L.new(s_.outputs[0], ln.inputs[0])
+        return ln.outputs['Value']
+    sh = n.new('ShaderNodeVectorMath'); sh.operation = 'SUBTRACT'; L.new(cv.outputs[0], sh.inputs[0]); sh.inputs[1].default_value = H
+    mn = n.new('ShaderNodeMath'); mn.operation = 'MINIMUM'; L.new(wrap(cv.outputs[0]), mn.inputs[0]); L.new(wrap(sh.outputs[0]), mn.inputs[1])
+    return mn.outputs[0]
+
+
+def honey_materials():
+    """Glass, honey and turned wood for the honey jar."""
+    if 'hj_glass' in MATS: return MATS['hj_glass'], MATS['hj_honey'], MATS['hj_wood']
+    # glass: clear, IOR 1.5, faint smudges in the roughness and a slow wave in the surface (pressed glass)
+    g = bpy.data.materials.new('hj_glass'); g.use_nodes = True; n, L = g.node_tree.nodes, g.node_tree.links
+    b = n['Principled BSDF']
+    b.inputs['Base Color'].default_value = (0.93, 0.96, 0.93, 1)
+    b.inputs['Transmission Weight'].default_value = 1.0; b.inputs['IOR'].default_value = 1.5
+    b.inputs['Specular IOR Level'].default_value = 0.32   # tames the big key's reflection below clipping
+    smudge = _noise(n, L, 9.0, 6)
+    rr = _ramp(n, L, smudge.outputs['Fac'], [(0.45, (0.0, 0.0, 0.0, 1)), (0.75, (0.025, 0.025, 0.025, 1))])
+    wav = _noise(n, L, 3.0, 2); bu = n.new('ShaderNodeBump'); bu.inputs['Strength'].default_value = 0.04
+    L.new(wav.outputs['Fac'], bu.inputs['Height'])
+    # a band of moulded honeycomb cells round the shoulder (object space: the jar's own height 0..0.65)
+    tc = n.new('ShaderNodeTexCoord'); hexd = _hex_cells(n, L, tc.outputs['Object'], 21.0)
+    sz = n.new('ShaderNodeSeparateXYZ'); L.new(tc.outputs['Object'], sz.inputs[0])
+    band = n.new('ShaderNodeMapRange'); band.interpolation_type = 'SMOOTHSTEP'
+    band.inputs['From Min'].default_value = 0.29; band.inputs['From Max'].default_value = 0.33
+    L.new(sz.outputs['Z'], band.inputs['Value'])
+    band2 = n.new('ShaderNodeMapRange'); band2.interpolation_type = 'SMOOTHSTEP'
+    band2.inputs['From Min'].default_value = 0.5; band2.inputs['From Max'].default_value = 0.46
+    L.new(sz.outputs['Z'], band2.inputs['Value'])
+    mk = n.new('ShaderNodeMath'); mk.operation = 'MULTIPLY'; L.new(band.outputs['Result'], mk.inputs[0]); L.new(band2.outputs['Result'], mk.inputs[1])
+    # the moulded band is a touch frosted (pressed glass is never mirror-polished in the mould's cells), and
+    # shallow: a sharp deep emboss sparkled like lace round the shoulder
+    rb = n.new('ShaderNodeMath'); rb.operation = 'MULTIPLY_ADD'; L.new(mk.outputs[0], rb.inputs[0]); rb.inputs[1].default_value = 0.18
+    L.new(rr.outputs['Color'], rb.inputs[2]); L.new(rb.outputs[0], b.inputs['Roughness'])
+    # and its reflection is weaker: the convex shoulder faces the bar's big key light, whose highlight there
+    # clipped to white right where the dipper goes in
+    sl = n.new('ShaderNodeMath'); sl.operation = 'MULTIPLY_ADD'; L.new(mk.outputs[0], sl.inputs[0]); sl.inputs[1].default_value = -0.24
+    sl.inputs[2].default_value = 0.32; L.new(sl.outputs[0], b.inputs['Specular IOR Level'])
+    mk2 = n.new('ShaderNodeMath'); mk2.operation = 'MULTIPLY'; mk2.inputs[1].default_value = 0.08; L.new(mk.outputs[0], mk2.inputs[0]); mk = mk2
+    cell = n.new('ShaderNodeMapRange'); cell.interpolation_type = 'SMOOTHSTEP'
+    cell.inputs['From Min'].default_value = 0.41; cell.inputs['From Max'].default_value = 0.5
+    L.new(hexd, cell.inputs['Value'])
+    hb = n.new('ShaderNodeBump'); hb.inputs['Distance'].default_value = 0.003
+    L.new(mk.outputs[0], hb.inputs['Strength']); L.new(cell.outputs['Result'], hb.inputs['Height'])
+    L.new(bu.outputs['Normal'], hb.inputs['Normal']); L.new(hb.outputs['Normal'], b.inputs['Normal'])
+    _shadow_pass(g, (0.92, 0.94, 0.9, 1))
+    MATS['hj_glass'] = g
+    # honey: a clear dielectric (IOR 1.49) coloured by absorption in its volume: gold where thin, deep amber
+    # in the core; it glows where the back light passes through it (a scatter volume costs too much here)
+    h = bpy.data.materials.new('hj_honey'); h.use_nodes = True; n, L = h.node_tree.nodes, h.node_tree.links
+    b = n['Principled BSDF']
+    b.inputs['Base Color'].default_value = srgb('#ffe6a8')
+    b.inputs['Transmission Weight'].default_value = 1.0; b.inputs['IOR'].default_value = 1.49
+    b.inputs['Specular IOR Level'].default_value = 0.38
+    # the open top is a touch soft (a skin of honey); sides and drips stay glassy
+    geo = n.new('ShaderNodeNewGeometry'); sz = n.new('ShaderNodeSeparateXYZ'); mr = n.new('ShaderNodeMapRange')
+    mr.inputs['From Min'].default_value = 0.8; mr.inputs['From Max'].default_value = 0.98
+    mr.inputs['To Min'].default_value = 0.02; mr.inputs['To Max'].default_value = 0.45
+    L.new(geo.outputs['Normal'], sz.inputs[0]); L.new(sz.outputs['Z'], mr.inputs['Value']); L.new(mr.outputs['Result'], b.inputs['Roughness'])
+    # absorbs blue strongly and green some: gold at the thin edges, a deep brown-amber in the core (a saturated
+    # orange core read as a lamp, not honey)
+    ab = n.new('ShaderNodeVolumeAbsorption'); ab.inputs['Color'].default_value = (0.9, 0.72, 0.3, 1)
+    ab.inputs['Density'].default_value = 7.5
+    L.new(ab.outputs[0], n['Material Output'].inputs['Volume'])
+    _shadow_pass(h)
+    MATS['hj_honey'] = h
+    # turned wood: grain runs along the dipper (local Z), oiled sheen
+    w = bpy.data.materials.new('hj_wood'); w.use_nodes = True; n, L = w.node_tree.nodes, w.node_tree.links
+    b = n['Principled BSDF']
+    grain = _noise(n, L, 6.0, 8, stretch=(14, 14, 0.6))
+    col = _ramp(n, L, grain.outputs['Fac'], [(0.3, srgb('#7a4a24')), (0.7, srgb('#c78d55')), (0.5, srgb('#a46a3a'))])
+    L.new(col.outputs['Color'], b.inputs['Base Color'])
+    rg = _ramp(n, L, grain.outputs['Fac'], [(0.3, (0.62, 0.62, 0.62, 1)), (0.7, (0.42, 0.42, 0.42, 1))])
+    L.new(rg.outputs['Color'], b.inputs['Roughness'])
+    bu = n.new('ShaderNodeBump'); bu.inputs['Strength'].default_value = 0.15; bu.inputs['Distance'].default_value = 0.002
+    L.new(grain.outputs['Fac'], bu.inputs['Height']); L.new(bu.outputs['Normal'], b.inputs['Normal'])
+    b.inputs['Specular IOR Level'].default_value = 0.45
+    MATS['hj_wood'] = w
+    return g, h, w
 
 
 def honey_jar():
-    """New in E (R8): honey comes from a jar he dips into, never from the counter."""
+    """New in E (R8): honey comes from a jar he dips into, never from the counter.
+    A squat glass jar with a threaded neck and a rolled lip, honey to just under the shoulder, a turned-wood
+    dipper resting in it (handle out to the upper left, where the app's dip point is) and a run of honey down
+    the outside. Lit by the bar plus two lights linked to the jar only: a tall softbox (window-shaped
+    highlights) and a warm back light so the honey glows against the dark wall."""
     Y = -0.85; x = 640; yb = surface_y(Y)
+    M_GL, M_HN, M_WD = honey_materials()
     parts = []
-    body = lathe('jar', [(0, 0), (0, 0.24), (0.03, 0.29), (0.38, 0.31), (0.52, 0.27), (0.56, 0.21), (0.64, 0.21), (0.66, 0.0)], M_HONEY, 48)
-    body.location = P(x, yb, 0); parts.append(body)
-    cloth = lathe('cloth', [(0.5, 0.0), (0.5, 0.25), (0.58, 0.29), (0.64, 0.27), (0.7, 0.18), (0.72, 0.0)], M_JAR, 48)
-    cloth.location = P(x, yb, 0); parts.append(cloth)
-    bpy.ops.mesh.primitive_torus_add(major_radius=0.235, minor_radius=0.018, location=P(x, yb - 55, 0)); tw = bpy.context.active_object
-    tw.data.materials.append(M_TWINE); smooth(tw); parts.append(tw)
-    # the dipper, leaning out of the jar
-    stick = lathe('dipper', [(0, 0.022), (0.55, 0.022), (0.6, 0.03)], M_DIPPER, 16)
-    head = lathe('dipperhead', [(-0.12, 0.0), (-0.11, 0.05), (-0.08, 0.065), (-0.05, 0.05), (-0.03, 0.065), (0.0, 0.05), (0.02, 0.03), (0.03, 0.0)], M_DIPPER, 20)
-    head.parent = stick
-    stick.location = P(x + 6, yb - 52, 0); stick.rotation_euler = (0.25, -0.5, 0)
-    parts += [stick, head]
+    base = P(x, yb, 0)
+    # glass: outside up, over the rolled lip, inside down; walls ~0.02, a thick base
+    outer = [(0.0, 0.0), (0.0, 0.25), (0.004, 0.275), (0.016, 0.292), (0.04, 0.30), (0.12, 0.304), (0.26, 0.302),
+             (0.33, 0.294), (0.39, 0.276), (0.44, 0.25), (0.48, 0.224), (0.505, 0.207), (0.52, 0.200), (0.61, 0.200),
+             (0.614, 0.207), (0.624, 0.213), (0.636, 0.211), (0.644, 0.203), (0.646, 0.194)]
+    inner = [(0.642, 0.185), (0.63, 0.181), (0.52, 0.181), (0.50, 0.188), (0.475, 0.205), (0.435, 0.232),
+             (0.385, 0.258), (0.33, 0.275), (0.26, 0.282), (0.12, 0.283), (0.075, 0.279), (0.058, 0.265), (0.052, 0.24), (0.05, 0.0)]
+    glass = _revolve('jar_glass', outer + inner, M_GL, 72); glass.location = base; parts.append(glass)
+    # the inside surface is a touch less polished: its concave back wall otherwise mirrors the big key
+    # light into one clipped white dot right where the honey meets the glass
+    M_GLI = MATS.get('hj_glass_in')
+    if not M_GLI:
+        M_GLI = M_GL.copy(); M_GLI.name = 'hj_glass_in'; MATS['hj_glass_in'] = M_GLI
+        bi = M_GLI.node_tree.nodes['Principled BSDF']
+        for l in list(bi.inputs['Roughness'].links): M_GLI.node_tree.links.remove(l)
+        bi.inputs['Roughness'].default_value = 0.045; bi.inputs['Specular IOR Level'].default_value = 0.25
+        # and no honeycomb on the inside: the cells are moulded into the outside only (on both faces they made
+        # little lenses that repeated every highlight as rings of lace)
+        for nd in M_GLI.node_tree.nodes:
+            if nd.type == 'BUMP' and abs(nd.inputs['Strength'].default_value - 0.04) < 1e-6:
+                M_GLI.node_tree.links.new(nd.outputs['Normal'], bi.inputs['Normal'])
+    glass.data.materials.append(M_GLI)
+    # the thick foot: smoky and a touch frosted (a pressed base, worn on the counter), and it passes less light
+    # to shadow rays, so it reads darker than the counter and leaves a dark contact line under the jar
+    M_GLB = MATS.get('hj_glass_base')
+    if not M_GLB:
+        M_GLB = M_GL.copy(); M_GLB.name = 'hj_glass_base'; MATS['hj_glass_base'] = M_GLB
+        nb = M_GLB.node_tree.nodes; bb = nb['Principled BSDF']
+        for l in list(bb.inputs['Roughness'].links): M_GLB.node_tree.links.remove(l)
+        bb.inputs['Roughness'].default_value = 0.12; bb.inputs['Specular IOR Level'].default_value = 0.2
+        bb.inputs['Base Color'].default_value = srgb('#6e5a40')
+        for nd in nb:
+            if nd.type == 'BSDF_TRANSPARENT': nd.inputs['Color'].default_value = (0.18, 0.15, 0.11, 1)
+    glass.data.materials.append(M_GLB)
+    for f in glass.data.polygons:
+        if f.index // 72 >= len(outer): f.material_index = 1
+        if max(glass.data.vertices[v].co.z for v in f.vertices) < 0.052: f.material_index = 2
+    # moulded thread on the neck: 1.6 turns of a raised glass bead, tapered at both ends
+    th = []; N = 90
+    for i in range(N + 1):
+        t = i / N; a = math.radians(-30) + t * 1.6 * 2 * math.pi
+        th.append((0.199 * math.cos(a), 0.199 * math.sin(a), 0.535 + t * 0.055))
+    thread = curve_obj('jar_thread', [th], 0.0055, M_GL)
+    for i, p in enumerate(thread.data.splines[0].points):
+        t = i / N; p.radius = max(0.05, min(1.0, t / 0.08, (1 - t) / 0.08))
+    thread.location = base; thread = _bake_curve(thread); parts.append(thread)
+    # honey: follows the inside wall (a hair inside it) to the fill line, then a meniscus climbing the glass
+    hf = 0.355; ins = 0.0015
+    rw = 0.275 + (0.258 - 0.275) * (hf + 0.012 - 0.33) / (0.385 - 0.33) - ins
+    hon = [(0.05 + ins, 0.0), (0.052 + ins, 0.238), (0.058 + ins, 0.262), (0.075 + ins, 0.276), (0.12, 0.282 - ins),
+           (0.26, 0.281 - ins), (0.33, 0.274 - ins), (hf + 0.012, rw), (hf + 0.006, rw - 0.006), (hf + 0.002, rw - 0.02),
+           (hf, rw - 0.045), (hf, 0.0)]
+    honey = _revolve('jar_honey', hon, M_HN, 72); honey.location = base; parts.append(honey)
+    # the dipper: one turned piece. Grooved head (5 rings), thin neck, collar, tapered handle, knob.
+    prof = [(-0.088, 0.0), (-0.087, 0.014)]
+    for i in range(41):
+        t = i / 40; z = -0.085 + t * 0.17
+        env = math.sin(math.pi * (0.06 + 0.88 * t)) ** 0.45
+        prof.append((z, env * (0.047 + 0.012 * math.cos(2 * math.pi * 5 * t))))
+    prof += [(0.09, 0.02), (0.10, 0.016), (0.125, 0.016), (0.13, 0.024), (0.142, 0.025), (0.148, 0.019),
+             (0.20, 0.0185), (0.45, 0.0165), (0.56, 0.0175), (0.60, 0.0215), (0.61, 0.0175), (0.625, 0.0215),
+             (0.65, 0.029), (0.675, 0.03), (0.698, 0.022), (0.708, 0.008), (0.71, 0.0)]
+    dip = _revolve('dipper', prof, M_WD, 32)
+    # honey clinging to the lower head, and a strand falling from its tip to the surface
+    coat = [(-0.094, 0.0), (-0.092, 0.02)]
+    for i in range(25):
+        t = i / 24; z = -0.09 + t * 0.12
+        env = math.sin(math.pi * (0.04 + 0.6 * t)) ** 0.5
+        coat.append((z, env * 0.058 + 0.004 * math.cos(2 * math.pi * 5 * t)))
+    coat += [(0.035, 0.03), (0.04, 0.0)]
+    # the coat is a round convex blob right where the dipper goes in: glossy, it mirrored the bar's key light
+    # as one clipped white disc (and the fill as a blue one). A smeared, half-set coat is satiny instead.
+    M_HC = MATS.get('hj_honey_coat')
+    if not M_HC:
+        M_HC = M_HN.copy(); M_HC.name = 'hj_honey_coat'; MATS['hj_honey_coat'] = M_HC
+        bc_ = M_HC.node_tree.nodes['Principled BSDF']
+        for l in list(bc_.inputs['Roughness'].links): M_HC.node_tree.links.remove(l)
+        bc_.inputs['Roughness'].default_value = 0.42; bc_.inputs['Specular IOR Level'].default_value = 0.2
+    hcoat = _revolve('dipper_honey', coat, M_HC, 32); hcoat.parent = dip
+    head = Vector((0.065, -0.03, 0.445)); axis = Vector((-0.5, -0.14, 1.0)).normalized()
+    dip.rotation_euler = axis.to_track_quat('Z', 'Y').to_euler()
+    dip.location = base + head
+    tip = head - axis * 0.092
+    spts = [tuple(base + tip + Vector((0.004 * math.sin(i), 0, -(tip.z - hf) * i / 8))) for i in range(9)]
+    strand = curve_obj('dipper_strand', [spts], 0.006, M_HN)
+    for i, p in enumerate(strand.data.splines[0].points): p.radius = [1.3, 0.8, 0.55, 0.45, 0.4, 0.45, 0.6, 1.0, 1.8][i]
+    strand = _bake_curve(strand)
+    parts += [dip, hcoat, strand]
+    # a run of honey from the lip down the outside, front right, ending in a bead on the shoulder
+    a = math.radians(-62); ca, sa = math.cos(a), math.sin(a)
+    run = [(0.198, 0.647), (0.212, 0.637), (0.219, 0.62), (0.21, 0.6), (0.208, 0.565), (0.209, 0.53), (0.218, 0.505),
+           (0.24, 0.48), (0.263, 0.455), (0.283, 0.425), (0.297, 0.395), (0.303, 0.37)]
+    drip = curve_obj('jar_drip', [[tuple(base + Vector((rr * ca, rr * sa, hh))) for rr, hh in run]], 0.0075, M_HN)
+    for i, p in enumerate(drip.data.splines[0].points): p.radius = [0.9, 1.0, 0.9, 0.8, 0.75, 0.7, 0.7, 0.72, 0.75, 0.85, 1.05, 1.25][i]
+    parts.append(_bake_curve(drip))
     group('honeyjar', parts, Y)
+    # lights for the jar alone (light linking, so the rest of the bar is untouched): a tall softbox up
+    # front-left for window-shaped highlights, and a broad, high, gentle warm back light so the honey glows at
+    # its thin edges (a small low back light was refracted by the round honey into two hot bars, like a lamp)
+    rc = bpy.data.collections.new('honeyjar_lit')
+    for o in parts: rc.objects.link(o)
+    bpy.context.view_layer.update()
+    c0 = glass.matrix_world.translation + Vector((0, 0, 0.3))
+    # the softbox skips the honey inside the jar: its reflection off the honey's surface and the coated dipper
+    # head was a clipped white spot where the dipper goes in, which the shoulder's cells multiplied into lace
+    sc = bpy.data.collections.new('honeyjar_soft_lit')
+    for o in parts:
+        if o not in (honey, hcoat, strand): sc.objects.link(o)
+    for name, off, energy, colour, sx, sy in (('honey_soft', Vector((-1.6, -2.2, 1.4)), 20, '#ffe2bd', 0.35, 1.1),):
+        ld = bpy.data.lights.new(name, 'AREA'); ld.energy = energy; ld.color = srgb(colour)[:3]
+        ld.shape = 'RECTANGLE'; ld.size = sx; ld.size_y = sy
+        ob = bpy.data.objects.new(name, ld); link(ob)
+        ob.location = c0 + off
+        ob.rotation_euler = (c0 - ob.location).to_track_quat('-Z', 'Y').to_euler()
+        ob.visible_camera = False
+        ob.light_linking.receiver_collection = sc
+    _honey_glow_card(c0, rc)
     return parts
 
 
+def _honey_glow_card(c0, rc):
+    """The honey's back light: an emitting card behind the jar, seen only through the glass and honey (camera,
+    glossy, shadow off; it lights the jar alone). Its glow fades out softly toward its top and sides, so the
+    round honey refracts it as a broad warm glow low in the jar, not as hard bright bars (a small area light
+    did that: it read as a lamp inside the jar), and it is gone by the height of the empty shoulder."""
+    m = bpy.data.materials.new('hj_glow'); m.use_nodes = True; n, L = m.node_tree.nodes, m.node_tree.links
+    n.remove(n['Principled BSDF']); out = n['Material Output']
+    tc = n.new('ShaderNodeTexCoord'); sp = n.new('ShaderNodeSeparateXYZ'); L.new(tc.outputs['Generated'], sp.inputs[0])
+    v = n.new('ShaderNodeMapRange'); v.interpolation_type = 'SMOOTHSTEP'
+    v.inputs['From Min'].default_value = 0.92; v.inputs['From Max'].default_value = 0.8; L.new(sp.outputs['Z'], v.inputs['Value'])
+    ux = n.new('ShaderNodeMath'); ux.operation = 'SUBTRACT'; ux.inputs[1].default_value = 0.5; L.new(sp.outputs['X'], ux.inputs[0])
+    ua = n.new('ShaderNodeMath'); ua.operation = 'ABSOLUTE'; L.new(ux.outputs[0], ua.inputs[0])
+    u = n.new('ShaderNodeMapRange'); u.interpolation_type = 'SMOOTHSTEP'
+    u.inputs['From Min'].default_value = 0.5; u.inputs['From Max'].default_value = 0.0; L.new(ua.outputs[0], u.inputs['Value'])
+    v2 = n.new('ShaderNodeMapRange'); v2.interpolation_type = 'SMOOTHSTEP'
+    v2.inputs['From Min'].default_value = 0.45; v2.inputs['From Max'].default_value = 0.75; L.new(sp.outputs['Z'], v2.inputs['Value'])
+    v3 = n.new('ShaderNodeMath'); v3.operation = 'MULTIPLY'; L.new(v.outputs['Result'], v3.inputs[0]); L.new(v2.outputs['Result'], v3.inputs[1])
+    k = n.new('ShaderNodeMath'); k.operation = 'MULTIPLY'; L.new(v3.outputs[0], k.inputs[0]); L.new(u.outputs['Result'], k.inputs[1])
+    st = n.new('ShaderNodeMath'); st.operation = 'MULTIPLY'; st.inputs[1].default_value = HONEY_GLOW; L.new(k.outputs[0], st.inputs[0])
+    em = n.new('ShaderNodeEmission'); em.inputs['Color'].default_value = srgb('#ffb862')
+    L.new(st.outputs[0], em.inputs['Strength'])
+    # clear to camera rays: set_visible turns every mesh's camera visibility back on for the background renders
+    lp = n.new('ShaderNodeLightPath'); tr = n.new('ShaderNodeBsdfTransparent'); mx = n.new('ShaderNodeMixShader')
+    L.new(lp.outputs['Is Camera Ray'], mx.inputs[0]); L.new(em.outputs[0], mx.inputs[1]); L.new(tr.outputs[0], mx.inputs[2])
+    L.new(mx.outputs[0], out.inputs['Surface'])
+    w, h = 2.4, 0.8
+    card = mesh_obj('honey_glow', [(-w / 2, 0, 0), (w / 2, 0, 0), (w / 2, 0, h), (-w / 2, 0, h)], [(0, 1, 2, 3)], m)
+    card.location = c0 + Vector((0, 1.6, -0.95))   # we look down on it: its top shows through the honey only
+    for a_ in ('visible_camera', 'visible_diffuse', 'visible_glossy', 'visible_shadow', 'visible_volume_scatter'):
+        setattr(card, a_, False)
+    card.light_linking.receiver_collection = rc
+    return card
+
+
+HONEY_GLOW = 8.0    # the glow card's peak emission strength
+
+
+def _die_noise(n, L, scale, detail=4, stretch=(1, 1, 1), rough=0.55):
+    tc = n.new('ShaderNodeTexCoord'); mp = n.new('ShaderNodeMapping'); mp.inputs['Scale'].default_value = stretch
+    nz = n.new('ShaderNodeTexNoise'); nz.inputs['Scale'].default_value = scale
+    nz.inputs['Detail'].default_value = detail; nz.inputs['Roughness'].default_value = rough
+    L.new(tc.outputs['Object'], mp.inputs[0]); L.new(mp.outputs[0], nz.inputs['Vector'])
+    return nz
+
+
+def _die_math(n, L, op, *vals, clamp=False):
+    m = n.new('ShaderNodeMath'); m.operation = op; m.use_clamp = clamp
+    for i, v in enumerate(vals):
+        if v is None: continue
+        if isinstance(v, (int, float)): m.inputs[i].default_value = v
+        else: L.new(v, m.inputs[i])
+    return m.outputs[0]
+
+
+def _die_mix(n, L, fac, a, b, blend='MIX'):
+    m = n.new('ShaderNodeMix'); m.data_type = 'RGBA'; m.blend_type = blend
+    for sock, v in (('Factor', fac), ('A', a), ('B', b)):
+        if isinstance(v, tuple): m.inputs[sock].default_value = v
+        elif isinstance(v, (int, float)): m.inputs[sock].default_value = v
+        else: L.new(v, m.inputs[sock])
+    return m.outputs['Result']
+
+
+def dice_materials():
+    """Old bone: a warm ivory (true colour, it is a touchable), mottled in soft clouds rather than streaked (a
+    streaky grain read as pale birch), a little light through it (subsurface), tiny dark pores, age-yellowing
+    gathered in the hollows round the pips and along the edges' crevices, handled smooth; a soft polish, no
+    clearcoat. The pips are drilled and filled with a deep red paint, matte and a little uneven."""
+    if 'die_bone' in MATS: return MATS['die_bone'], MATS['die_paint']
+    m = bpy.data.materials.new('die_bone'); m.use_nodes = True
+    n = m.node_tree.nodes; L = m.node_tree.links; b = n['Principled BSDF']
+    b.inputs['Subsurface Weight'].default_value = 0.4
+    b.inputs['Subsurface Radius'].default_value = (1.0, 0.7, 0.4)
+    b.inputs['Subsurface Scale'].default_value = 0.02
+    b.inputs['IOR'].default_value = 1.54; b.inputs['Specular IOR Level'].default_value = 0.38
+    mott = _die_noise(n, L, 22, 4, (1, 1, 1), 0.6)              # soft cloudy mottle, no direction
+    fine = _die_noise(n, L, 150, 3, (1, 1, 1), 0.5)             # a faint fine speckle on top of it
+    pore = _die_noise(n, L, 520, 1, (1, 1, 1), 0.5)             # tiny dark pores
+    blot = _die_noise(n, L, 6, 3)                               # broad age staining
+    col = _ramp(n, L, mott.outputs['Fac'], [(0.3, srgb('#d6c8a6')), (0.72, srgb('#e9e0c8')), (0.5, srgb('#dfd4b6'))])
+    c = _die_mix(n, L, _die_math(n, L, 'MULTIPLY', _die_math(n, L, 'SUBTRACT', fine.outputs['Fac'], 0.5), 0.5, clamp=True),
+                 col.outputs['Color'], srgb('#c9b48c'))
+    stain = _die_math(n, L, 'MULTIPLY', _die_math(n, L, 'SUBTRACT', blot.outputs['Fac'], 0.48), 2.5, clamp=True)
+    c = _die_mix(n, L, stain, c, srgb('#eee0bc'), 'MULTIPLY')
+    pdots = _die_math(n, L, 'GREATER_THAN', pore.outputs['Fac'], 0.74)
+    c = _die_mix(n, L, _die_math(n, L, 'MULTIPLY', pdots, 0.75), c, srgb('#6e5a40'))
+    # age-yellowing in the hollows (round and inside the pip rims, the edge crevices)
+    ao = n.new('ShaderNodeAmbientOcclusion'); ao.inputs['Distance'].default_value = 0.016; ao.only_local = True; ao.samples = 8
+    grime = _die_math(n, L, 'MULTIPLY', _die_math(n, L, 'SUBTRACT', 1.0, ao.outputs['AO']), 2.0, clamp=True)
+    c = _die_mix(n, L, grime, c, srgb('#a9864c'), 'MULTIPLY')
+    bev = n.new('ShaderNodeBevel'); bev.samples = 6; bev.inputs['Radius'].default_value = 0.006
+    geo = n.new('ShaderNodeNewGeometry')
+    dt = n.new('ShaderNodeVectorMath'); dt.operation = 'DOT_PRODUCT'
+    L.new(bev.outputs[0], dt.inputs[0]); L.new(geo.outputs['Normal'], dt.inputs[1])
+    edge = _die_math(n, L, 'MULTIPLY', _die_math(n, L, 'SUBTRACT', 1.0, dt.outputs['Value']), 12.0, clamp=True)
+    c = _die_mix(n, L, _die_math(n, L, 'MULTIPLY', edge, 0.3), c, srgb('#e2cfa4'))
+    L.new(c, b.inputs['Base Color'])
+    # roughness 0.3..0.42 with polish variation, smoother on the handled edges
+    rough = n.new('ShaderNodeMapRange'); L.new(blot.outputs['Fac'], rough.inputs['Value'])
+    rough.inputs['From Min'].default_value = 0.3; rough.inputs['From Max'].default_value = 0.7
+    rough.inputs['To Min'].default_value = 0.3; rough.inputs['To Max'].default_value = 0.42
+    L.new(_die_math(n, L, 'MULTIPLY_ADD', edge, -0.08, rough.outputs['Result']), b.inputs['Roughness'])
+    # micro bump: a gentle unevenness, the pores sunk
+    hsum = _die_math(n, L, 'MULTIPLY_ADD', fine.outputs['Fac'], 0.4, mott.outputs['Fac'])
+    hsum = _die_math(n, L, 'SUBTRACT', hsum, _die_math(n, L, 'MULTIPLY', pdots, 0.6))
+    bump = n.new('ShaderNodeBump'); bump.inputs['Strength'].default_value = 0.06; bump.inputs['Distance'].default_value = 0.001
+    L.new(hsum, bump.inputs['Height']); L.new(bev.outputs[0], bump.inputs['Normal']); L.new(bump.outputs[0], b.inputs['Normal'])
+    MATS['die_bone'] = m
+    p = bpy.data.materials.new('die_paint'); p.use_nodes = True
+    n = p.node_tree.nodes; L = p.node_tree.links; b = n['Principled BSDF']
+    pn = _die_noise(n, L, 60, 4)
+    pc = _ramp(n, L, pn.outputs['Fac'], [(0.35, srgb('#5f0d15')), (0.65, srgb('#8f1420'))])
+    L.new(pc.outputs['Color'], b.inputs['Base Color'])
+    b.inputs['Roughness'].default_value = 0.6; b.inputs['Specular IOR Level'].default_value = 0.35
+    MATS['die_paint'] = p
+    return m, p
+
+
+def _die_shadow_material():
+    """Black with an alpha falloff from the die's square footprint (plane local XY, Blender units): a tight dark
+    line where it touches, then a soft shade pushed back and to the left, away from the warm key."""
+    sm = bpy.data.materials.new('die_shadow'); sm.use_nodes = True
+    n = sm.node_tree.nodes; L = sm.node_tree.links
+    n.remove(n['Principled BSDF']); out = n['Material Output']
+    tc = n.new('ShaderNodeTexCoord')
+
+    def sdf(off, half):
+        sb = n.new('ShaderNodeVectorMath'); sb.operation = 'SUBTRACT'; L.new(tc.outputs['Object'], sb.inputs[0]); sb.inputs[1].default_value = off
+        ab = n.new('ShaderNodeVectorMath'); ab.operation = 'ABSOLUTE'; L.new(sb.outputs[0], ab.inputs[0])
+        s2 = n.new('ShaderNodeVectorMath'); s2.operation = 'SUBTRACT'; L.new(ab.outputs[0], s2.inputs[0]); s2.inputs[1].default_value = (half, half, 0)
+        mx = n.new('ShaderNodeVectorMath'); mx.operation = 'MAXIMUM'; L.new(s2.outputs[0], mx.inputs[0]); mx.inputs[1].default_value = (0, 0, 0)
+        ln = n.new('ShaderNodeVectorMath'); ln.operation = 'LENGTH'; L.new(mx.outputs[0], ln.inputs[0])
+        return ln.outputs['Value']
+    return sm, n, L, out, sdf
+
+
 def dice():
-    Y = -1.0; yb = surface_y(Y); s = 0.27
-    bpy.ops.mesh.primitive_cube_add(size=s, location=P(938, yb - 13.5, 0)); d = bpy.context.active_object
-    add_bevel(d, 0.035, 4); d.data.materials.append(M_IVORY); smooth(d)
-    pips = []
-    for (px, pz) in ((-0.07, 0.07), (0, 0), (0.07, -0.07)):            # front face: three
-        bpy.ops.mesh.primitive_uv_sphere_add(radius=0.027, location=(px, -s / 2 + 0.008, pz)); p = bpy.context.active_object
-        p.scale = (1, 0.45, 1); p.data.materials.append(M_PIP); smooth(p); p.parent = d; pips.append(p)
-    for (px, py) in ((-0.07, -0.07), (0.07, 0.07)):                    # top face: two
-        bpy.ops.mesh.primitive_uv_sphere_add(radius=0.027, location=(px, py, s / 2 - 0.008)); p = bpy.context.active_object
-        p.scale = (1, 1, 0.45); p.data.materials.append(M_PIP); smooth(p); p.parent = d; pips.append(p)
-    for (py, pz) in ((-0.06, 0.06), (0.0, 0.0), (0.06, -0.06), (-0.06, -0.06), (0.06, 0.06)):  # right face: five
-        bpy.ops.mesh.primitive_uv_sphere_add(radius=0.024, location=(s / 2 - 0.008, py, pz)); p = bpy.context.active_object
-        p.scale = (0.45, 1, 1); p.data.materials.append(M_PIP); smooth(p); p.parent = d; pips.append(p)
-    d.rotation_euler = (0, 0, math.radians(-22))
-    push(d, Y)
-    return [d] + pips
+    """One old bone die on the counter (x 938, depth -1.0). A real Western die: opposite faces sum to 7 and it
+    is right-handed (1, 2, 3 run counterclockwise round their corner); we see 1 on top, 3 at the front and 5 on
+    the right. Hand-filed small round edges, a little out of true; drilled pips filled with red paint.
+    Its shadow is off (the panther bats the die away, so nothing of it may stay behind in the background);
+    instead it carries its own soft contact shadow, on a small plane under it inside its own layer."""
+    Y = -1.0; yb = surface_y(Y); s = 0.262; h = s / 2
+    M_BONE, M_PNT = dice_materials()
+    from mathutils import noise as mnoise
+    import random
+    bm = bmesh.new(); bmesh.ops.create_cube(bm, size=s)
+    bmesh.ops.subdivide_edges(bm, edges=bm.edges[:], cuts=5, use_grid_fill=True)
+    sharp = [e for e in bm.edges if e.is_manifold and e.calc_face_angle(0) > 1.0]
+    bmesh.ops.bevel(bm, geom=sharp, offset=0.014, offset_type='OFFSET', segments=4, profile=0.5, affect='EDGES', clamp_overlap=True)
+    for v in bm.verts:   # hand-made: a little out of square, the faces not quite flat
+        v.co += mnoise.noise_vector(v.co * 9.0 + Vector((3.1, 7.7, 1.3))) * 0.0022
+    me = bpy.data.meshes.new('die'); bm.to_mesh(me); bm.free()
+    d = bpy.data.objects.new('die', me); link(d); me.materials.append(M_BONE)
+    # drilled pips: spherical cups 0.6 of their radius deep, cut with one boolean, painted inside
+    cut = bpy.data.collections.new('die_cut'); scene.collection.children.link(cut)
+    o = 0.066
+    holes = [((0, 0, h), (0, 0, 1), 1.22)]                                                         # top: one
+    holes += [((x, -h, z), (0, -1, 0), 1.0) for x, z in ((-o, o), (0, 0), (o, -o))]                # front: three
+    holes += [((h, y, z), (1, 0, 0), 1.0) for y, z in ((-o, o), (o, o), (0, 0), (-o, -o), (o, -o))]  # right: five
+    rng = random.Random(7)
+    for c, nrm, k in holes:
+        rr = 0.0215 * k * rng.uniform(0.96, 1.04); nv = Vector(nrm)
+        bs = bmesh.new(); bmesh.ops.create_uvsphere(bs, u_segments=28, v_segments=14, radius=rr)
+        ms = bpy.data.meshes.new('die_hole'); bs.to_mesh(ms); bs.free(); ms.materials.append(M_PNT)
+        ho = bpy.data.objects.new('die_hole', ms); cut.objects.link(ho)
+        jit = Vector((rng.uniform(-1, 1), rng.uniform(-1, 1), rng.uniform(-1, 1))) * 0.0018
+        jit -= nv * jit.dot(nv)
+        ho.location = Vector(c) + jit + nv * (0.4 * rr)
+    bo = d.modifiers.new('pips', 'BOOLEAN'); bo.operation = 'DIFFERENCE'; bo.operand_type = 'COLLECTION'
+    bo.collection = cut; bo.solver = 'EXACT'; bo.material_mode = 'TRANSFER'
+    bpy.context.view_layer.update()
+    me2 = bpy.data.meshes.new_from_object(d.evaluated_get(bpy.context.evaluated_depsgraph_get()))
+    d.modifiers.clear(); d.data = me2
+    for ho in list(cut.objects): bpy.data.objects.remove(ho, do_unlink=True)
+    bpy.data.collections.remove(cut)
+    bm = bmesh.new(); bm.from_mesh(me2)
+    for f in bm.faces: f.smooth = True
+    for e in bm.edges: e.smooth = not (e.is_manifold and e.calc_face_angle(0) > math.radians(40))
+    bm.to_mesh(me2); bm.free()
+    d.location = P(938, yb - h / U - 0.05, 0)
+    d.rotation_euler = (0, 0, math.radians(-24))
+    d.visible_shadow = False; d.visible_glossy = False   # nothing of it may stay behind in the background
+    # its own contact shadow
+    sm, n, L, out, sdf = _die_shadow_material()
+    contact = _die_math(n, L, 'EXPONENT', _die_math(n, L, 'MULTIPLY', sdf((0, 0, 0), h - 0.006), -1 / 0.005))
+    contact = _die_math(n, L, 'MULTIPLY', contact, 0.97)
+    soft = n.new('ShaderNodeMapRange'); soft.interpolation_type = 'SMOOTHERSTEP'
+    L.new(sdf((-0.04, 0.05, 0), h - 0.02), soft.inputs['Value'])
+    soft.inputs['From Min'].default_value = 0.0; soft.inputs['From Max'].default_value = 0.07
+    soft.inputs['To Min'].default_value = 0.72; soft.inputs['To Max'].default_value = 0.0
+    a = _die_math(n, L, 'MINIMUM', _die_math(n, L, 'MAXIMUM', contact, soft.outputs['Result']), 0.95)
+    tr = n.new('ShaderNodeBsdfTransparent'); bk = n.new('ShaderNodeBsdfDiffuse'); bk.inputs['Color'].default_value = (0, 0, 0, 1)
+    mxs = n.new('ShaderNodeMixShader'); L.new(a, mxs.inputs[0]); L.new(tr.outputs[0], mxs.inputs[1]); L.new(bk.outputs[0], mxs.inputs[2])
+    L.new(mxs.outputs[0], out.inputs['Surface'])
+    ext = h + 0.11      # the layer's size follows this plane: keep it near the old one (the tap target)
+    sh = mesh_obj('die_shadow', [(-ext, -ext, 0), (ext, -ext, 0), (ext, ext, 0), (-ext, ext, 0)], [(0, 1, 2, 3)], sm)
+    sh.location = P(938, yb - 0.08, 0); sh.rotation_euler = d.rotation_euler
+    for a_ in ('visible_diffuse', 'visible_glossy', 'visible_shadow', 'visible_transmission', 'visible_volume_scatter'):
+        setattr(sh, a_, False)
+    for ob in (d, sh): push(ob, Y)
+    # a small warm softbox high on the left, behind, linked to the die only: a soft sheen along the top and
+    # the left edge so the bone separates from the dark wall (no hard white spot)
+    rc = bpy.data.collections.new('die_lit'); rc.objects.link(d)
+    ld = bpy.data.lights.new('die_soft', 'AREA'); ld.energy = DIE_SOFT_W; ld.color = srgb('#ffd8a8')[:3]
+    ld.shape = 'DISK'; ld.size = 0.7
+    lo = bpy.data.objects.new('die_soft', ld); link(lo)
+    c0 = d.location.copy(); lo.location = c0 + Vector((-0.7, 0.55, 0.9))
+    lo.rotation_euler = (c0 - lo.location).to_track_quat('-Z', 'Y').to_euler()
+    lo.visible_camera = False; lo.light_linking.receiver_collection = rc
+    return [d, sh]
+
+
+DIE_SOFT_W = 12.0
 
 
 # Dionysus' panther: a real leopard model from Sketchfab (see ../CREDITS.md), CC BY 4.0.
 LEOPARD_UID = 'd02a9709556348968fef810684b4e3fa'
-LEOPARD_GLB = os.path.join(WORK, 'models', f'leopard-{LEOPARD_UID[:8]}.glb')
+MODELS = os.environ.get('BAR_MODELS', os.path.join(WORK, 'models'))   # downloaded models, kept out of git
+LEOPARD_GLB = os.path.join(MODELS, f'leopard-{LEOPARD_UID[:8]}.glb')
 
 
 def fetch_leopard():
@@ -507,27 +1245,499 @@ if ONLY == 'panther':
     T['panther'] = panther()
 if ONLY in ('all', 'bg', 'touch'):
     T['menu'] = menu(); T['honey'] = honey_jar(); T['dice'] = dice(); T['panther'] = panther()
+if ITEM in ('menu', 'honey', 'dice'):
+    T[ITEM] = {'menu': menu, 'honey': honey_jar, 'dice': dice}[ITEM]()
 
 
 # ---------------------------------------------------------------- bottles: one per Style (Q6)
-# Profiles follow prototype B's family silhouettes (draw.js BOT): (svg y, half-width), svg y 96 is the base.
+# Each bottle is real glass: a thick shell (outer and inner wall, a heavy base, a punt), a separate
+# liquid volume inside it filled to below the shoulder, paper labels that sit on the glass, and a
+# closure per Family. Profiles are (height above the base, radius) key points in prototype B's svg
+# units (1 unit is about 3 mm on a real bottle); a monotone cubic makes them smooth, so shoulders
+# curve into the neck and the lip is a real bead. Family silhouettes keep B's widths and heights.
 PROFILES = {
-    'whisky': [(96, 0), (96, 20), (93, 24), (41, 24), (30, 15), (22, 7), (6, 7), (5, 0)],
-    'gin': [(96, 0), (96, 12), (92, 14), (32, 14), (24, 6), (6, 6), (5, 0)],
-    'rum': [(96, 0), (96, 18), (92, 21), (52, 21), (38, 14), (30, 5), (6, 5), (5, 0)],
-    'tequila': [(96, 0), (96, 14), (92, 17), (34, 17), (25, 5), (6, 5), (5, 0)],
-    'vodka': [(96, 0), (96, 10), (92, 12), (40, 12), (31, 4), (6, 4), (5, 0)],
-    'brandy': [(96, 0), (95, 12), (88, 20), (74, 25), (60, 24), (46, 15), (34, 5), (6, 5), (5, 0)],
-    'aperitif': [(96, 0), (96, 13), (92, 16), (52, 16), (38, 9), (32, 4), (6, 4), (5, 0)],
-    'bitters': [(96, 0), (95, 9), (88, 15), (72, 17), (58, 13), (46, 3), (20, 3), (19, 0)],
-    'mixer': [(96, 0), (96, 12), (92, 14), (44, 14), (32, 8), (26, 6), (18, 6), (17, 0)],
+    'whisky': [(0, 21.6), (1.2, 23.2), (4, 23.8), (54, 23.8), (60, 22.6), (65, 18), (69, 11), (72, 8), (75, 7.4),
+               (84, 7.2), (84.8, 8.4), (87.6, 8.4), (88.4, 7.4)],
+    'gin': [(0, 12.4), (1, 13.7), (3, 14.2), (58, 14.2), (64, 13.4), (69, 10.4), (73, 7.4), (76, 6.2), (85, 6),
+            (85.6, 6.8), (88, 6.8)],
+    'rum': [(0, 19.4), (1.2, 20.8), (4, 21.2), (44, 21.2), (50, 20), (55, 15), (59, 9), (62, 6), (64, 5.3), (82, 5.1),
+            (82.8, 6.3), (86, 6.3), (86.6, 5.6)],
+    'tequila': [(0, 16.6), (1, 17.6), (3, 17.8), (20, 17.2), (48, 15.6), (56, 14), (61, 10), (65, 6.6), (68, 5.4),
+                (82, 5.2), (82.8, 6.2), (85.6, 6.2), (86.2, 5.5)],
+    'vodka': [(0, 10.6), (1, 11.7), (3, 12.1), (52, 12.1), (58, 11.4), (63, 8.6), (67, 5.6), (70, 4.8), (84, 4.6),
+              (84.6, 5.4), (87, 5.4)],
+    'brandy': [(0, 11.5), (1, 13.2), (4, 17.6), (10, 22.2), (18, 25), (26, 25.2), (34, 23.4), (42, 18.4), (49, 11.5),
+               (54, 7), (58, 5.2), (82, 4.9), (82.8, 6), (85.6, 6), (86.2, 5.3)],
+    'aperitif': [(0, 14.4), (1.2, 15.8), (4, 16.2), (50, 16.2), (56, 15.4), (62, 11.8), (67, 7.6), (71, 5.2),
+                 (85, 4.6), (85.6, 5.4), (88.4, 5.4)],
+    'bitters': [(0, 13.4), (1, 14.8), (3, 15.2), (46, 15.2), (52, 14.2), (58, 10), (62, 6), (65, 4.4), (71, 4.2),
+                (71.6, 5.2), (74, 5.2)],
+    'mixer': [(0, 12.4), (1, 13.7), (3, 14.1), (36, 14.1), (42, 13.4), (50, 10.6), (58, 8), (68, 6.4), (74.6, 6),
+              (75.2, 7.2), (77, 7.2), (77.6, 6.4)],
 }
 BOTTLE_SCALE = {'bitters': 0.78, 'mixer': 0.9}
-LABEL_BAND = {  # (svg y top, svg y bottom, colour) per Family: a label layout, never wording
-    'whisky': [(52, 78, '#f1e6cf')], 'gin': [(44, 84, '#f4f1e8')], 'rum': [(58, 78, '#e8d7a8')],
-    'tequila': [(52, 74, '#1f4a3a')], 'vodka': [(56, 70, '#ffffff')], 'brandy': [(62, 76, '#1c1410')],
-    'aperitif': [(56, 74, '#f3ead6'), (60, 63, '#c2141c')], 'bitters': [(44, 88, '#f4eedd')], 'mixer': [(50, 62, '#2f5a7a')],
+# a few Styles have their own silhouette inside the Family (same width class and height)
+STYLE_PROFILE = {
+    'islay scotch': [(0, 20), (1.2, 21.6), (4, 22), (48, 22), (56, 20.5), (63, 15), (68, 9.5), (72, 7.6), (84, 7.3),
+                     (84.8, 8.4), (87.6, 8.4), (88.4, 7.4)],
+    'irish whiskey': [(0, 18.4), (1.2, 20), (4, 20.4), (50, 20.4), (56, 18.6), (61, 12.5), (65, 7.6), (68, 6.4), (85, 6.2),
+                      (85.8, 7.4), (88.6, 7.4), (89.2, 6.6)],
+    'rye': [(0, 19.4), (1.2, 21), (4, 21.4), (58, 21.4), (62, 20.4), (66, 15), (69.5, 9), (72, 7.4), (85, 7.2),
+            (85.8, 8.2), (88.6, 8.2), (89.2, 7.2)],
 }
+# per Family: wall, base thickness, punt height, fill line, squareness of the body (0 round .. 1 square,
+# fading out over the shoulder between the two heights), glass tint
+BOTTLE_FORM = {
+    'whisky':   dict(wall=1.1, base=5.0, punt=1.2, fill=50, sq=(0.75, 56, 68), glass='#f6f7f2'),
+    'gin':      dict(wall=1.0, base=4.0, punt=0.8, fill=55, sq=(0.55, 60, 72), glass='#e6f2e8'),
+    'rum':      dict(wall=1.0, base=4.0, punt=1.0, fill=43, sq=None, glass='#f4f4ee'),
+    'tequila':  dict(wall=1.0, base=5.0, punt=0.8, fill=46, sq=None, glass='#f6f7f2'),
+    'vodka':    dict(wall=1.0, base=4.0, punt=0.6, fill=50, sq=None, glass='#f6f8f8'),
+    'brandy':   dict(wall=1.0, base=3.5, punt=1.6, fill=36, sq=None, glass='#f4f2ea'),
+    'aperitif': dict(wall=0.9, base=4.6, punt=3.4, fill=48, sq=None, glass='#f2f4ee'),
+    'bitters':  dict(wall=0.9, base=3.0, punt=0.6, fill=44, sq=None, glass='#c88a44'),
+    'mixer':    dict(wall=1.0, base=3.0, punt=0.8, fill=62, sq=None, glass='#eef4ee'),
+}
+# within a Family, a few Styles differ in body, stopper and label, so the shelf is not a row of clones
+STYLE_FORM = {'islay scotch': dict(sq=None), 'irish whiskey': dict(sq=(0.3, 56, 68)), 'rye': dict(sq=(0.45, 56, 68)),
+              'amaretto': dict(fill=40), 'cherry heering': dict(fill=33)}
+STYLE_WOOD = {'rye': '#1a1412', 'islay scotch': '#2a1a10', 'irish whiskey': '#6a4626', 'blended scotch': '#1e1612',
+              'amaretto': '#5a3a20', 'cherry heering': '#1a1210'}
+STYLE_LAYOUT = {'islay scotch': 'whisky2', 'blended scotch': 'whisky2', 'cherry heering': 'whisky2', 'coffee liqueur': 'whisky2'}
+STYLE_GLASS = {'islay scotch': '#d8ecd2', 'london dry gin': '#d6ecdc', 'sweet vermouth': '#eef0e4',
+               'ginger beer': '#e2d6b8', 'ginger ale': '#dcecd6'}
+# Paper labels per Family: (kind, h0, h1, half-angle in degrees). 'front' is a patch facing the camera,
+# 'wrap' goes all round at a fixed radius (bitters' oversized label stands off the shoulder).
+LABEL_BAND = {
+    'whisky': [('front', 13, 45, 33), ('neck', 75.5, 81, 75)],
+    'gin': [('front', 16, 52, 40), ('neck', 77, 82, 70)],
+    'rum': [('front', 9, 36, 52)],
+    'tequila': [('front', 12, 40, 48)],
+    'vodka': [('front', 14, 44, 50)],
+    'brandy': [('front', 10, 33, 46), ('neck', 66, 76, 65)],
+    'aperitif': [('front', 14, 40, 58), ('neck', 64, 70, 62)],
+    'bitters': [('wrap', 4, 55, 180)],
+    'mixer': [('front', 14, 32, 64), ('neck', 61, 67, 70)],
+}
+LABEL_ACCENT = {'gin': '#2f6a52', 'vodka': '#2b3f66', 'rum': '#8a2a1c', 'tequila': '#1f4a3a', 'mixer': '#2f5a7a',
+                'aperitif': '#1f3a5a', 'whisky': '#7a2a18', 'brandy': '#5a1a12', 'bitters': '#8a2a14'}
+STYLE_ACCENT = {'triple sec': '#c8611c', 'tonic water': '#9a7a2a', 'ginger ale': '#2f5a3a', 'ginger beer': '#7a3a18'}
+BOTTLE_SPP = 160          # glass with liquid needs more than the 32 spp the opaque bottles used
+
+
+def _pchip(xs, ys):
+    """Monotone cubic through the key points (no overshoot): a smooth radius for every height."""
+    n = len(xs); d = [(ys[i + 1] - ys[i]) / (xs[i + 1] - xs[i]) for i in range(n - 1)]
+    m = [d[0]] + [0.0 if d[i - 1] * d[i] <= 0 else
+                  3 * (xs[i + 1] - xs[i - 1]) / ((2 * xs[i + 1] - xs[i] - xs[i - 1]) / d[i - 1] + (xs[i + 1] + xs[i] - 2 * xs[i - 1]) / d[i])
+                  for i in range(1, n - 1)] + [d[-1]]
+
+    def f(x):
+        x = min(max(x, xs[0]), xs[-1]); i = max(j for j in range(n - 1) if xs[j] <= x) if x < xs[-1] else n - 2
+        h = xs[i + 1] - xs[i]; t = (x - xs[i]) / h
+        return ((2 * t ** 3 - 3 * t ** 2 + 1) * ys[i] + (t ** 3 - 2 * t ** 2 + t) * h * m[i]
+                + (-2 * t ** 3 + 3 * t ** 2) * ys[i + 1] + (t ** 3 - t ** 2) * h * m[i + 1])
+    return f
+
+
+def _heights(h0, h1, keys, step=0.6):
+    hs = {round(h0, 4), round(h1, 4)} | {round(k, 4) for k in keys if h0 < k < h1}
+    n = max(2, int((h1 - h0) / step)); hs |= {round(h0 + (h1 - h0) * i / n, 4) for i in range(n + 1)}
+    return sorted(hs)
+
+
+def _sq_dir(a, q):
+    """Unit direction at angle a on a rounded square (superellipse), q 0 = circle .. 1 = squarish."""
+    if q <= 0.001: return math.cos(a), math.sin(a)
+    e = 2 / (2 + q * 8); c, s = math.cos(a), math.sin(a)
+    return math.copysign(abs(c) ** e, c), math.copysign(abs(s) ** e, s)
+
+
+def _revolve(name, path, material, sqf, segs=72, a0=0.0, a1=2 * math.pi, uv=None):
+    """Revolve a (height, radius) path. sqf(h) gives the squareness. A partial sweep (a0..a1) makes a
+    patch with UVs (u along the sweep, v from uv=(h0, h1)); a full sweep is closed."""
+    full = abs(a1 - a0 - 2 * math.pi) < 1e-6
+    bm = bmesh.new(); rings = []; cols = segs if full else segs + 1
+    for h, rr in path:
+        q = sqf(h); ring = []
+        for i in range(cols):
+            a = a0 + (a1 - a0) * i / segs; cx, sy = _sq_dir(a, q)
+            ring.append(bm.verts.new((rr * cx, rr * sy, h)))
+        rings.append(ring)
+    faces = []
+    for k, (ra, rb) in enumerate(zip(rings, rings[1:])):
+        for i in range(segs):
+            j = (i + 1) % cols
+            try: faces.append((bm.faces.new((ra[i], ra[j], rb[j], rb[i])), i, k))
+            except ValueError: pass
+    if uv:
+        lay = bm.loops.layers.uv.new(); h0, h1 = uv; bm.verts.index_update(); uvs = {}
+        for k, ring in enumerate(rings):   # u by arc length, so a squarish face is not stretched in the middle
+            cum = [0.0]
+            for va, vb in zip(ring, ring[1:]): cum.append(cum[-1] + (vb.co - va.co).length)
+            tot = cum[-1] or 1.0
+            for i, v in enumerate(ring): uvs[v.index] = (cum[i] / tot, (path[k][0] - h0) / (h1 - h0))
+        for f, i, k in faces:
+            for lp in f.loops: lp[lay].uv = uvs[lp.vert.index]
+    bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=1e-7)
+    if full: bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    me = bpy.data.meshes.new(name); bm.to_mesh(me); bm.free()
+    ob = bpy.data.objects.new(name, me); link(ob); ob.data.materials.append(material); smooth(ob)
+    return ob
+
+
+def _nodes(name):
+    m = bpy.data.materials.new(name); m.use_nodes = True
+    return m, m.node_tree.nodes, m.node_tree.links, m.node_tree.nodes['Principled BSDF']
+
+
+def _noise(n, L, scale, detail=4, coord='Object'):
+    tc = n.new('ShaderNodeTexCoord'); nz = n.new('ShaderNodeTexNoise')
+    nz.inputs['Scale'].default_value = scale; nz.inputs['Detail'].default_value = detail
+    L.new(tc.outputs[coord], nz.inputs['Vector']); return nz
+
+
+def _maprange(n, L, src, a, b):
+    mr = n.new('ShaderNodeMapRange'); mr.inputs['To Min'].default_value = a; mr.inputs['To Max'].default_value = b
+    L.new(src, mr.inputs['Value']); return mr.outputs['Result']
+
+
+def glass_material(tint):
+    key = 'glass_' + tint
+    if key in MATS: return MATS[key]
+    m, n, L, b = _nodes(key)
+    b.inputs['Base Color'].default_value = srgb(tint); b.inputs['Transmission Weight'].default_value = 1.0
+    b.inputs['IOR'].default_value = 1.5
+    nz = _noise(n, L, 9.0, 6)        # faint smudges: roughness 0.01..0.07
+    L.new(_maprange(n, L, nz.outputs['Fac'], 0.0, 0.07), b.inputs['Roughness'])
+    MATS[key] = m; return m
+
+
+def liquid_material(colour, d_ref):
+    """Clear liquid surface (IOR 1.36) with a Volume Absorption tuned so that light crossing the bottle's
+    full width comes out in the Style's colour: richer in the middle, lighter at the thin edges."""
+    key = f'liquid_{colour}'
+    if key in MATS: return MATS[key]
+    m, n, L, b = _nodes(key)
+    b.inputs['Base Color'].default_value = (1, 1, 1, 1); b.inputs['Transmission Weight'].default_value = 1.0
+    b.inputs['Roughness'].default_value = 0.0; b.inputs['IOR'].default_value = 1.36
+    c = srgb(colour)[:3]; lum = 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]
+    if lum > 0.55: c = [x ** 0.35 for x in c]          # clear spirits and sodas: only a faint tint
+    sig = [-math.log(max(x, 0.004)) / d_ref for x in c]; D = max(max(sig), 1e-4)
+    va = n.new('ShaderNodeVolumeAbsorption'); va.inputs['Color'].default_value = (*[1 - s / D for s in sig], 1)
+    va.inputs['Density'].default_value = D
+    L.new(va.outputs[0], n['Material Output'].inputs['Volume'])
+    MATS[key] = m; return m
+
+
+def _darker(h, k):
+    c = [int(h.lstrip('#')[i:i + 2], 16) for i in (0, 2, 4)]
+    return '#%02x%02x%02x' % tuple(int(x * k) for x in c)
+
+
+def label_texture(fam, aspect):
+    """A paper label drawn as masks, no words: R = accent print, G = dark ink, B = gold foil, A = paper."""
+    from PIL import Image, ImageDraw
+    p = os.path.join(WORK, f'bottle_label_{fam}_{aspect:.2f}.png')
+    H = 512; W = max(64, int(H * aspect)); im = Image.new('RGBA', (W, H), (0, 0, 0, 255)); d = ImageDraw.Draw(im)
+    R, G, B = (255, 0, 0, 255), (0, 255, 0, 255), (0, 0, 255, 255)
+    cx, cy = W / 2, H / 2
+    def rule(y, w, c, x0=0.08, x1=0.92): d.rectangle([W * x0, y, W * x1, y + w], fill=c)
+    if fam == 'whisky':
+        d.rectangle([10, 10, W - 11, H - 11], outline=R, width=10); d.rectangle([28, 28, W - 29, H - 29], outline=B, width=4)
+        d.rectangle([28, H * 0.62, W - 29, H * 0.8], fill=R)
+        d.ellipse([cx - H * 0.2, H * 0.14, cx + H * 0.2, H * 0.52], outline=B, width=8)
+        d.polygon([(cx, H * 0.23), (cx + H * 0.07, H * 0.33), (cx, H * 0.43), (cx - H * 0.07, H * 0.33)], fill=B)
+        rule(H * 0.86, 5, G, 0.25, 0.75)
+    elif fam == 'whisky2':   # a dark field with a foil frame and a pale panel
+        d.rectangle([0, 0, W, H], fill=G); d.rectangle([14, 14, W - 15, H - 15], outline=B, width=5)
+        d.rectangle([W * 0.16, H * 0.3, W * 0.84, H * 0.66], fill=(0, 0, 0, 255))
+        d.rectangle([W * 0.16, H * 0.3, W * 0.84, H * 0.66], outline=R, width=8)
+        d.ellipse([cx - H * 0.08, H * 0.08, cx + H * 0.08, H * 0.24], outline=B, width=5)
+        rule(H * 0.76, 6, R, 0.3, 0.7); rule(H * 0.84, 4, B, 0.36, 0.64)
+    elif fam == 'gin':
+        d.rectangle([8, 8, W - 9, H - 9], outline=R, width=6)
+        d.polygon([(cx, H * 0.12), (W * 0.86, cy), (cx, H * 0.88), (W * 0.14, cy)], outline=R, width=9)
+        d.polygon([(cx, H * 0.22), (W * 0.76, cy), (cx, H * 0.78), (W * 0.24, cy)], fill=R)
+        d.ellipse([cx - H * 0.08, cy - H * 0.08, cx + H * 0.08, cy + H * 0.08], fill=B)
+        rule(H * 0.05, 4, B); rule(H * 0.94, 4, B)
+    elif fam == 'rum':
+        d.rectangle([0, 0, W, H * 0.42], fill=R); rule(H * 0.42, 8, B, 0, 1)
+        d.ellipse([cx - H * 0.2, H * 0.2, cx + H * 0.2, H * 0.6], fill=(0, 0, 0, 255), outline=B, width=10)
+        d.ellipse([cx - H * 0.08, H * 0.32, cx + H * 0.08, H * 0.48], fill=R)
+        rule(H * 0.8, 6, G, 0.2, 0.8); rule(H * 0.88, 6, G, 0.3, 0.7)
+    elif fam == 'tequila':
+        d.rectangle([12, 12, W - 13, H - 13], outline=R, width=18)
+        for k in range(16):
+            a = 2 * math.pi * k / 16
+            d.polygon([(cx, cy * 0.9), (cx + math.cos(a - 0.1) * H * 0.3, cy * 0.9 + math.sin(a - 0.1) * H * 0.3),
+                       (cx + math.cos(a + 0.1) * H * 0.3, cy * 0.9 + math.sin(a + 0.1) * H * 0.3)], fill=B)
+        d.ellipse([cx - H * 0.13, cy * 0.9 - H * 0.13, cx + H * 0.13, cy * 0.9 + H * 0.13], fill=R)
+        rule(H * 0.82, 6, G, 0.2, 0.8)
+    elif fam == 'vodka':
+        rule(H * 0.1, 4, R, 0.06, 0.94); rule(H * 0.88, 4, R, 0.06, 0.94)
+        d.rectangle([0, H * 0.44, W, H * 0.58], fill=R); rule(H * 0.4, 3, B, 0, 1); rule(H * 0.61, 3, B, 0, 1)
+        d.ellipse([cx - H * 0.07, H * 0.2, cx + H * 0.07, H * 0.34], outline=G, width=5)
+    elif fam == 'brandy':
+        d.rectangle([0, 0, W, H], fill=(0, 0, 0, 0))
+        d.ellipse([6, 6, W - 7, H - 7], fill=(0, 0, 0, 255), outline=R, width=14)
+        d.ellipse([30, 30, W - 31, H - 31], outline=B, width=5)
+        d.rectangle([W * 0.12, H * 0.56, W * 0.88, H * 0.7], fill=R)
+        d.polygon([(cx, H * 0.16), (cx + H * 0.1, H * 0.3), (cx, H * 0.44), (cx - H * 0.1, H * 0.3)], fill=B)
+    elif fam == 'aperitif':
+        d.rectangle([0, 0, W, H], outline=B, width=6)
+        d.rectangle([0, H * 0.36, W, H * 0.64], fill=R); rule(H * 0.33, 4, G, 0, 1); rule(H * 0.66, 4, G, 0, 1)
+        d.ellipse([cx - H * 0.11, H * 0.06, cx + H * 0.11, H * 0.28], outline=B, width=6)
+        rule(H * 0.78, 5, G, 0.3, 0.7); rule(H * 0.86, 5, G, 0.38, 0.62)
+    elif fam == 'bitters':
+        d.rectangle([W * 0.3, 14, W * 0.7, H - 15], outline=R, width=8)
+        d.rectangle([W * 0.3 + 18, 32, W * 0.7 - 19, H - 33], outline=G, width=3)
+        for k in range(9):
+            y = H * 0.18 + k * H * 0.07; rule(y, 4, G, 0.36, 0.64 - (k % 3) * 0.03)
+        for x in (0.05, 0.85): d.rectangle([W * x, H * 0.2, W * (x + 0.1), H * 0.8], outline=G, width=3)
+        d.ellipse([cx - W * 0.04, H * 0.03, cx + W * 0.04, H * 0.11], fill=B)
+    elif fam == 'mixer':
+        d.rectangle([0, 0, W, H], fill=R)
+        d.ellipse([W * 0.2, H * 0.1, W * 0.8, H * 0.9], fill=(0, 0, 0, 255), outline=B, width=8)
+        d.ellipse([cx - H * 0.12, cy - H * 0.12, cx + H * 0.12, cy + H * 0.12], outline=R, width=10)
+    else:  # neck labels: a band with a foil rule
+        d.rectangle([0, 0, W, H], fill=R); rule(H * 0.18, H * 0.08, B, 0, 1); rule(H * 0.74, H * 0.08, B, 0, 1)
+        d.ellipse([cx - H * 0.2, cy - H * 0.2, cx + H * 0.2, cy + H * 0.2], fill=(0, 0, 0, 255))
+    im.save(p)
+    return p
+
+
+def label_material(fam, accent, aspect):
+    key = f'label_{fam}_{accent}_{aspect:.2f}'
+    if key in MATS: return MATS[key]
+    m, n, L, b = _nodes(key)
+    tex = n.new('ShaderNodeTexImage'); tex.image = bpy.data.images.load(label_texture(fam, aspect))
+    tex.image.colorspace_settings.name = 'Non-Color'; tex.interpolation = 'Cubic'
+    sep = n.new('ShaderNodeSeparateColor'); L.new(tex.outputs['Color'], sep.inputs[0])
+    fib = _noise(n, L, 140.0, 8, 'UV')                    # paper fibre: a little colour, roughness, bump
+    paper = n.new('ShaderNodeMix'); paper.data_type = 'RGBA'
+    paper.inputs['A'].default_value = srgb('#b39c74'); paper.inputs['B'].default_value = srgb('#a08a64')
+    L.new(fib.outputs['Fac'], paper.inputs['Factor'])
+    # the paper wraps a curved body: it darkens as it turns away from the eye (and a touch toward its sides)
+    lw = n.new('ShaderNodeLayerWeight'); lw.inputs['Blend'].default_value = 0.5
+    fall = n.new('ShaderNodeMapRange'); fall.inputs['From Min'].default_value = 0.0; fall.inputs['From Max'].default_value = 0.7
+    fall.inputs['To Min'].default_value = 1.0; fall.inputs['To Max'].default_value = 0.35
+    L.new(lw.outputs['Facing'], fall.inputs['Value'])
+    shade = n.new('ShaderNodeMix'); shade.data_type = 'RGBA'; shade.blend_type = 'MULTIPLY'
+    shade.inputs['Factor'].default_value = 1.0
+    c1 = n.new('ShaderNodeMix'); c1.data_type = 'RGBA'; c1.inputs['B'].default_value = srgb(accent)
+    L.new(sep.outputs['Red'], c1.inputs['Factor']); L.new(paper.outputs['Result'], c1.inputs['A'])
+    c2 = n.new('ShaderNodeMix'); c2.data_type = 'RGBA'; c2.inputs['B'].default_value = srgb('#1c1512')
+    L.new(sep.outputs['Green'], c2.inputs['Factor']); L.new(c1.outputs['Result'], c2.inputs['A'])
+    c3 = n.new('ShaderNodeMix'); c3.data_type = 'RGBA'; c3.inputs['B'].default_value = srgb('#c9a44a')
+    L.new(sep.outputs['Blue'], c3.inputs['Factor']); L.new(c2.outputs['Result'], c3.inputs['A'])
+    L.new(c3.outputs['Result'], shade.inputs['A'])
+    cmb = n.new('ShaderNodeCombineColor')
+    for ch in ('Red', 'Green', 'Blue'): L.new(fall.outputs['Result'], cmb.inputs[ch])
+    L.new(cmb.outputs[0], shade.inputs['B']); L.new(shade.outputs['Result'], b.inputs['Base Color'])
+    L.new(sep.outputs['Blue'], b.inputs['Metallic'])
+    L.new(_maprange(n, L, sep.outputs['Blue'], 0.72, 0.3), b.inputs['Roughness'])
+    add = n.new('ShaderNodeMath'); add.operation = 'MULTIPLY_ADD'; add.inputs[1].default_value = 0.5
+    L.new(sep.outputs['Blue'], add.inputs[0]); L.new(fib.outputs['Fac'], add.inputs[2])
+    bump = n.new('ShaderNodeBump'); bump.inputs['Strength'].default_value = 0.25; bump.inputs['Distance'].default_value = 0.002
+    L.new(add.outputs[0], bump.inputs['Height']); L.new(bump.outputs[0], b.inputs['Normal'])
+    # paper shape (brandy's oval): the texture's alpha cuts the label out
+    tr = n.new('ShaderNodeBsdfTransparent'); mx = n.new('ShaderNodeMixShader')
+    L.new(tex.outputs['Alpha'], mx.inputs['Fac']); L.new(tr.outputs[0], mx.inputs[1]); L.new(b.outputs[0], mx.inputs[2])
+    L.new(mx.outputs[0], n['Material Output'].inputs['Surface'])
+    MATS[key] = m; return m
+
+
+def closure_material(kind, colour):
+    key = f'closure_{kind}_{colour}'
+    if key in MATS: return MATS[key]
+    m, n, L, b = _nodes(key)
+    b.inputs['Base Color'].default_value = srgb(colour)
+    if kind in ('metal', 'foil', 'crown'):
+        b.inputs['Metallic'].default_value = 1.0
+        nz = _noise(n, L, 60.0 if kind != 'foil' else 18.0, 6)
+        L.new(_maprange(n, L, nz.outputs['Fac'], 0.18, 0.34 if kind != 'foil' else 0.45), b.inputs['Roughness'])
+        bump = n.new('ShaderNodeBump'); bump.inputs['Strength'].default_value = 0.08 if kind != 'foil' else 0.35
+        L.new(nz.outputs['Fac'], bump.inputs['Height']); L.new(bump.outputs[0], b.inputs['Normal'])
+    elif kind == 'wood':
+        tc = n.new('ShaderNodeTexCoord'); wv = n.new('ShaderNodeTexWave'); wv.wave_type = 'RINGS'
+        wv.inputs['Scale'].default_value = 6.0; wv.inputs['Distortion'].default_value = 6.0; wv.inputs['Detail'].default_value = 4
+        L.new(tc.outputs['Object'], wv.inputs['Vector'])
+        mx = n.new('ShaderNodeMix'); mx.data_type = 'RGBA'
+        mx.inputs['A'].default_value = srgb(colour); mx.inputs['B'].default_value = srgb(_darker(colour, 0.6))
+        L.new(wv.outputs['Fac'], mx.inputs['Factor']); L.new(mx.outputs['Result'], b.inputs['Base Color'])
+        b.inputs['Roughness'].default_value = 0.42; b.inputs['Coat Weight'].default_value = 0.2
+    elif kind == 'cork':
+        nz = _noise(n, L, 220.0, 3)
+        mx = n.new('ShaderNodeMix'); mx.data_type = 'RGBA'
+        mx.inputs['A'].default_value = srgb('#b48c5c'); mx.inputs['B'].default_value = srgb('#6e5030')
+        L.new(nz.outputs['Fac'], mx.inputs['Factor']); L.new(mx.outputs['Result'], b.inputs['Base Color'])
+        b.inputs['Roughness'].default_value = 0.85
+        bump = n.new('ShaderNodeBump'); bump.inputs['Strength'].default_value = 0.5
+        L.new(nz.outputs['Fac'], bump.inputs['Height']); L.new(bump.outputs[0], b.inputs['Normal'])
+    else:  # plastic
+        b.inputs['Roughness'].default_value = 0.38
+    MATS[key] = m; return m
+
+
+def _accent(style, colour, fam):
+    if style in STYLE_ACCENT: return STYLE_ACCENT[style]
+    c = srgb(colour); lum = 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]
+    return colour if 0.015 < lum < 0.5 else (_darker(colour, 1.6) if lum <= 0.015 else LABEL_ACCENT[fam])
+
+
+_BOTTLE_RIG = {}
+WHISKY_TURN = {'bourbon': -11, 'rye': 6, 'blended scotch': -4, 'islay scotch': 13, 'irish whiskey': -8}   # degrees, so no two are clones
+_GLOW_CARDS = []
+
+
+def bottle_rig():
+    """Lights that touch only the bottles (Cycles light linking): a tall window-shaped soft box at front
+    left for the glint, and two narrow strips behind left and right so the glass edges catch light
+    against the dark wall. Created once; each bottle joins the receiver collection."""
+    if _BOTTLE_RIG: return _BOTTLE_RIG['coll']
+    coll = bpy.data.collections.new('bottle_light_rx')
+    base = C + (P(800, 340, 0) - C) * scale_for(SHELF_Y)
+    for name, off, rot, energy, sx, sy, col in (
+            ('bottle_window', (-2.6, -3.2, 1.3), (math.radians(72), 0, math.radians(-38)), 180, 0.55, 1.5, '#ffe2bd'),
+            ('bottle_rim_l', (-1.5, 1.6, 0.25), (math.radians(90), 0, math.radians(-128)), 60, 0.07, 1.6, '#ffd2a0'),
+            ('bottle_rim_r', (1.5, 1.6, 0.25), (math.radians(90), 0, math.radians(128)), 60, 0.07, 1.6, '#ffd2a0')):
+        ld = bpy.data.lights.new(name, 'AREA'); ld.energy = energy; ld.color = srgb(col)[:3]
+        ld.shape = 'RECTANGLE'; ld.size = sx; ld.size_y = sy
+        ob = bpy.data.objects.new(name, ld); link(ob); ob.location = base + Vector(off); ob.rotation_euler = rot
+        ob.visible_camera = False
+        ob.light_linking.receiver_collection = coll
+    _BOTTLE_RIG['coll'] = coll
+    return coll
+
+
+def make_bottle(style, colour, fam, x=800):
+    """One Style's bottle, base centre on the shelf at world (x, 384)."""
+    for gname, cd_ in list(_GLOW_CARDS):   # a removed bottle's glow card goes with it
+        if gname not in bpy.data.objects:
+            bpy.data.objects.remove(cd_, do_unlink=True); _GLOW_CARDS.remove((gname, cd_))
+    keys = STYLE_PROFILE.get(style) or PROFILES.get(fam, PROFILES['vodka']); F = BOTTLE_FORM.get(fam, BOTTLE_FORM['vodka'])
+    s = BOTTLE_SCALE.get(fam, 1.04) * U
+    hk, rk = [h for h, _ in keys], [r for _, r in keys]; r_o = _pchip(hk, rk); top = hk[-1]
+    F = dict(F, **STYLE_FORM.get(style, {})); sq = F['sq']
+    def sqf(h):
+        if not sq: return 0.0
+        q, a, b = sq; return q if h <= a else (0.0 if h >= b else q * (0.5 + 0.5 * math.cos(math.pi * (h - a) / (b - a))))
+    t, base_t, punt = F['wall'], F['base'], F['punt']
+    # the inner wall follows the outside minus the wall, but runs straight down the neck past the lip bead
+    neck_keys = [r for h, r in keys if h > top - 14]
+    def r_i(h):
+        lo = min(r_o(hh) for hh in (h - 3, h - 1.5, h, h + 1.5, h + 3)); return max(lo - t, 1.2)
+    S = lambda pts: [(h * s, r * s) for h, r in pts]
+    R0 = rk[0]
+    bottom = [(punt, 0.0), (punt * 0.96, R0 * 0.18), (punt * 0.8, R0 * 0.38), (punt * 0.45, R0 * 0.6), (0.12, R0 * 0.8)]
+    outer = [(h, r_o(h)) for h in _heights(0, top, hk)]
+    inner = [(h, r_i(h)) for h in reversed(_heights(base_t, top, hk))]
+    glass_path = bottom + outer + inner + [(base_t, 0.0)]
+    gl = _revolve('bottle_' + style, S(glass_path), glass_material(STYLE_GLASS.get(style, F['glass'])), sqf)
+    parts = [gl]
+    # liquid: inside the inner wall with a small gap, a flat top with a meniscus at the wall
+    g = 0.25; hf = F['fill']; hb = base_t + 0.2
+    liq = [(hb, 0.0)] + [(h, r_i(h) - g) for h in _heights(hb, hf, hk)] + [(hf + 0.45, r_i(hf) - g - 0.05),
+                                                                              (hf + 0.1, r_i(hf) - g - 0.9), (hf, 0.0)]
+    d_ref = 2 * (r_i(hf * 0.5) - g) * s * scale_for(SHELF_Y)
+    parts.append(_revolve('liquid_' + style, S(liq), liquid_material(colour, d_ref), sqf))
+    # paper labels, on the glass: 0.35 units (about 1 mm) proud of the outer surface at every height
+    accent = _accent(style, colour, fam)
+    for kind, h0, h1, half in LABEL_BAND.get(fam, []):
+        a0, a1 = -math.pi / 2 - math.radians(half), -math.pi / 2 + math.radians(half)
+        hs = _heights(h0, h1, hk, 0.5)
+        if kind == 'wrap':   # a straight paper tube: stands off the shoulder like Angostura's
+            rr = max(r_o(h) for h in hs) + 0.4; path = [(h, rr) for h in hs]; a0, a1 = math.pi / 2, 2.5 * math.pi
+        else:
+            path = [(h, r_o(h) + 0.35) for h in hs]
+        hm = (h0 + h1) / 2; rm = path[len(path) // 2][1]; qm = sqf(hm)   # true width of the paper at mid height
+        pts = [_sq_dir(a0 + (a1 - a0) * i / 32, qm) for i in range(33)]
+        aspect = sum(math.dist(u_, v_) for u_, v_ in zip(pts, pts[1:])) * rm / (h1 - h0)
+        lf = fam if kind != 'neck' else 'neck'
+        if kind == 'front' and style in STYLE_LAYOUT: lf = STYLE_LAYOUT[style]
+        lb = _revolve(f'label_{kind}_' + style, S(path), label_material(lf, accent, aspect), sqf,
+                      segs=48, a0=a0, a1=a1 if kind != 'wrap' else a1 - 1e-4, uv=(h0 * s, h1 * s))
+        parts.append(lb)
+    # closures
+    lip = r_o(top - 1.6)
+    if fam in ('whisky', 'brandy', 'rum', 'tequila'):
+        wood = STYLE_WOOD.get(style) or {'whisky': '#4a2c18', 'brandy': '#3a1f12', 'rum': '#161210', 'tequila': '#8a6038'}[fam]
+        th = {'whisky': 5.5, 'brandy': 6.5, 'rum': 5.0, 'tequila': 9.0}[fam]; wr = lip + {'tequila': 0.6}.get(fam, 1.4)
+        parts.append(_revolve('cork_' + style, S([(top - 0.2, 0), (top - 0.2, lip - 1.2), (top + 1.2, lip - 1.0), (top + 1.2, 0)]),
+                              closure_material('cork', '#b48c5c'), lambda h: 0.0, 40))
+        bt = top + 1.0
+        if fam == 'tequila':   # a tall turned stopper
+            prof = [(bt, 0), (bt, wr * 0.92), (bt + 0.5, wr), (bt + th * 0.6, wr * 0.86), (bt + th * 0.85, wr * 1.05),
+                    (bt + th - 0.5, wr * 0.8), (bt + th, 0)]
+        elif fam == 'brandy':  # a mushroom top
+            prof = [(bt, 0), (bt, wr * 0.9), (bt + 0.6, wr), (bt + th * 0.55, wr * 1.04), (bt + th * 0.85, wr * 0.86),
+                    (bt + th, wr * 0.4), (bt + th, 0)]
+        else:
+            prof = [(bt, 0), (bt, wr * 0.94), (bt + 0.5, wr), (bt + th - 0.7, wr), (bt + th, wr * 0.9), (bt + th, 0)]
+        parts.append(_revolve('stopper_' + style, S(prof), closure_material('wood', wood), lambda h: 0.0, 48))
+    elif fam in ('gin', 'vodka'):   # aluminium screw cap with knurling and a perforation ring
+        cr = lip + 0.7; h0 = top - 4.2; h1 = top + 6.5
+        capcol = {'gin': _darker(accent, 1.0), 'vodka': '#b8b8b4'}[fam] if style != 'triple sec' else '#c8611c'
+        path = [(h0, cr - 0.2), (h0 + 0.3, cr), (h0 + 2.2, cr), (h0 + 2.4, cr - 0.25), (h0 + 2.7, cr - 0.25), (h0 + 2.9, cr),
+                (h1 - 0.6, cr), (h1, cr - 0.6), (h1, 0)]
+        cap = _revolve('cap_' + style, S(path), closure_material('metal', capcol), lambda h: 0.0, 96)
+        for v in cap.data.vertices:   # knurl: fine vertical ridges above the ring
+            hh = v.co.z / s
+            if h0 + 3.2 < hh < h1 - 0.8:
+                a = math.atan2(v.co.y, v.co.x); k = 1 + 0.025 * math.cos(48 * a)
+                v.co.x *= k; v.co.y *= k
+        parts.append(cap)
+    elif fam == 'aperitif':   # foil capsule over the neck and lip
+        h0 = top - 18; hs = _heights(h0, top, hk, 0.4)
+        path = [(h0, r_o(h0) + 0.25)] + [(h, r_o(h) + 0.3) for h in hs] + [(top + 0.4, lip * 0.9), (top + 0.45, 0)]
+        foil = {'campari': '#8a1418', 'sweet vermouth': '#3a1a14', 'aperol': '#c8642a', 'amaro nonino': '#b8964a',
+                'dry vermouth': '#c9b27a', 'ginger wine': '#2a4a32'}.get(style, '#b8964a')
+        parts.append(_revolve('foil_' + style, S(path), closure_material('foil', foil), lambda h: 0.0, 64))
+    elif fam == 'bitters':    # plastic dasher cap: a collar, a dome, a small spout
+        cr = lip + 0.8; h0 = top - 4; capcol = {'angostura bitters': '#d6a630'}.get(style, '#2a1c16')
+        path = [(h0, cr - 0.2), (h0 + 0.3, cr), (top + 3, cr), (top + 4.5, cr * 0.85), (top + 5.6, cr * 0.45),
+                (top + 6, 1.5), (top + 8.5, 1.1), (top + 8.8, 0)]
+        parts.append(_revolve('dasher_' + style, S(path), closure_material('plastic', capcol), lambda h: 0.0, 48))
+    elif fam == 'mixer':      # crown cap with a crimped skirt
+        cr = lip + 0.6; h0 = top - 2.2
+        capcol = {'tonic water': '#c4a44e', 'soda water': '#b8bcc0', 'ginger ale': '#4a7a4a', 'ginger beer': '#8a4a1c'}.get(style, '#b8bcc0')
+        path = [(h0, cr + 0.5), (h0 + 0.4, cr + 0.6), (top + 0.6, cr + 0.1), (top + 1.2, cr - 0.3), (top + 1.3, 0)]
+        cap = _revolve('crown_' + style, S(path), closure_material('crown', capcol), lambda h: 0.0, 84)
+        for v in cap.data.vertices:
+            hh = v.co.z / s
+            if hh < top + 0.7:
+                a = math.atan2(v.co.y, v.co.x); k = 1 + 0.06 * max(0, math.cos(21 * a)) * (top + 0.7 - hh) / 2.9
+                v.co.x *= k; v.co.y *= k
+        parts.append(cap)
+    # a little turn so the labels are not all square to the camera
+    turn = math.radians(WHISKY_TURN.get(style, ((sum(map(ord, style)) * 37) % 13 - 6) * 0.9))
+    coll = bottle_rig()
+    for p in parts:
+        p.location = P(x, 384, 0); p.rotation_euler = (0, 0, turn)
+        push(p, SHELF_Y); coll.objects.link(p)
+    # behind the liquid only, an emitting card that is seen through the glass and nothing else: the
+    # backlight a lit back bar gives, so the liquid shows its colour on the dark wall
+    c = srgb(colour); lum = 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]
+    cw, ch = r_o(hf * 0.5) * 2.6 * s, (hf - 4.5 - base_t) * s
+    card = mesh_obj('glow_' + style, [(-cw / 2, 0, 0), (cw / 2, 0, 0), (cw / 2, 0, ch), (-cw / 2, 0, ch)], [(0, 1, 2, 3)],
+                    glow_material(0.2 + 1.15 * (1 - min(lum / 0.6, 1)) ** 1.5 + 0.4 * min(lum / 0.6, 1) ** 3))
+    card.location = P(x, 384, 0) + Vector((0, r_o(hf * 0.5) * s * 1.7, base_t * s))
+    for a in ('visible_camera', 'visible_diffuse', 'visible_glossy', 'visible_shadow', 'visible_volume_scatter'):
+        setattr(card, a, False)
+    push(card, SHELF_Y)
+    _GLOW_CARDS.append((gl.name, card))   # not in parts: set_visible would show it to the camera
+    return parts
+
+
+def glow_material(strength):
+    key = f'bottle_glow_{strength:.2f}'
+    if key in MATS: return MATS[key]
+    m = bpy.data.materials.new(key); m.use_nodes = True; n = m.node_tree.nodes; L = m.node_tree.links
+    n.remove(n['Principled BSDF']); em = n.new('ShaderNodeEmission'); em.inputs['Color'].default_value = srgb('#ffe6c4')
+    em.inputs['Strength'].default_value = strength
+    L.new(em.outputs[0], n['Material Output'].inputs['Surface'])
+    MATS[key] = m; return m
 
 
 def read_styles():
@@ -539,26 +1749,6 @@ def read_styles():
         if kind in ('spirit', 'wine', 'liqueur', 'bitters', 'mixer'):
             out.append((k, label, colour, shape))
     return out
-
-
-def make_bottle(style, colour, fam):
-    prof = PROFILES.get(fam, PROFILES['vodka']); s = BOTTLE_SCALE.get(fam, 1.04) * U
-    body = lathe('bottle_' + style, [((96 - y) * s, r * s) for y, r in prof],
-                 mat('btl_' + colour, colour, 0.32, coat=0.25, spec=0.35), 40)
-    parts = [body]
-    for (ya, yb_, col) in LABEL_BAND.get(fam, []):
-        rmax = max(r for y, r in prof if ya <= y <= yb_ or True) * s
-        r_at = lambda yy: next((r for y, r in prof if y <= yy), prof[-1][1])
-        rr = min(r_at(ya), r_at(yb_)) * s + 0.004
-        lb = lathe('label', [((96 - yb_) * s, rr), ((96 - ya) * s, rr)], mat('lbl_' + col, col, 0.7), 40)
-        parts.append(lb)
-    cap_y = min(y for y, r in prof); cap_r = [r for y, r in prof if y <= cap_y + 1][-1] if False else prof[-2][1]
-    cap = lathe('cap', [((96 - cap_y - 2) * s, (cap_r + 1.2) * s), ((96 - cap_y + 8) * s, (cap_r + 1.2) * s)], mat('cap', '#1c1410', 0.4), 24)
-    parts.append(cap)
-    for p in parts:
-        p.location = P(800, 384, 0)
-        push(p, SHELF_Y)
-    return parts
 
 
 # ---------------------------------------------------------------- lights
@@ -603,7 +1793,7 @@ cy.use_adaptive_sampling = True; cy.adaptive_threshold = 0.02
 cy.use_denoising = True
 try: cy.denoiser = 'OPENIMAGEDENOISE'
 except Exception: pass
-cy.max_bounces = 4; cy.diffuse_bounces = 2; cy.glossy_bounces = 2; cy.transmission_bounces = 2; cy.transparent_max_bounces = 4
+cy.max_bounces = 10; cy.diffuse_bounces = 2; cy.glossy_bounces = 3; cy.transmission_bounces = 10; cy.transparent_max_bounces = 8   # glass needs the transmission bounces
 cy.caustics_reflective = False; cy.caustics_refractive = False
 cy.use_light_tree = True
 try: cy.threads_mode = 'AUTO'
@@ -701,7 +1891,18 @@ def crop_alpha(png, region, k, name, q=86):
 
 
 MANIFEST_PATH = os.path.join(WORK, 'manifest.json')
-MAN = json.load(open(MANIFEST_PATH)) if os.path.exists(MANIFEST_PATH) else {}
+def read_layers_js():
+    """The committed layers.js, so a partial render (--only touch) keeps the other layers' entries."""
+    p = os.path.join(PROTO, 'layers.js')
+    if not os.path.exists(p): return {}
+    src = open(p, encoding='utf8').read()
+    a = src.index('const LAYERS = ') + len('const LAYERS = '); b = src.index(';\nconst RENDER_LOG')
+    out = json.loads(src[a:b])
+    out['renderLog'] = json.loads(src[src.index('const RENDER_LOG = ') + 19:].rstrip().rstrip(';'))
+    return out
+
+
+MAN = json.load(open(MANIFEST_PATH)) if os.path.exists(MANIFEST_PATH) else read_layers_js()
 MAN.setdefault('bg', {}); MAN.setdefault('touch', {}); MAN.setdefault('bottles', {})
 MAN['frame'] = FRAME
 MAN['counterBackY'] = round(surface_y(BACK_Y), 1)
@@ -755,18 +1956,56 @@ if ONLY in ('all', 'touch'):
         png = render_region('t_' + name, reg, K[name], parts, True, 64)
         MAN['touch'][name] = crop_alpha(png, reg, K[name], 'touch-' + name)
 
+def bottle_neon(on):
+    """While the bottles render, the neon letters and the neon's wash light are hidden from glossy rays, so
+    the sign no longer smears a mottled pink reflection over every shoulder (the wash still tints them a
+    little through diffuse). Restored afterwards, so the backgrounds and other layers are unchanged."""
+    for o in (neon, NEON_WASH): o.visible_glossy = not on
+    neon.visible_transmission = not on   # it is also seen in the glass by the rays that go through it
+
+
 if ONLY in ('all', 'bottles'):
+    bottle_neon(True)
     styles = read_styles()
     for i, (key, label, colour, fam) in enumerate(styles):
         parts = make_bottle(key, colour, fam)
         reg = bbox_world(parts, 6)
-        png = render_region('b_' + key.replace(' ', '_'), reg, 2.6, parts, True, 32)
+        png = render_region('b_' + key.replace(' ', '_'), reg, 2.6, parts, True, BOTTLE_SPP)
         info = crop_alpha(png, reg, 2.6, 'bottle-' + key.replace(' ', '-'), 84)
         info['ax'], info['ay'] = 800, 384          # anchor: base centre, on the shelf
         info['family'] = fam
         MAN['bottles'][key] = info
         for p in parts:
             bpy.data.objects.remove(p, do_unlink=True)
+    bottle_neon(False)
+
+if ONLY == 'preview':
+    # Look at it large, alone and in the bar, before it ships. Nothing here is written to img/ or layers.js.
+    from PIL import Image
+    PV = os.path.join(WORK, 'preview'); os.makedirs(PV, exist_ok=True)
+    WORLD_OBJS = [o for o in bpy.data.objects if o.type in ('MESH', 'CURVE', 'META', 'FONT') and o not in ALL_TOUCH]
+    if ITEM == 'bottles':
+        styles = read_styles()
+        if STYLES: styles = [t for t in styles if t[0] in STYLES]
+        parts = []
+        n = len(styles); step = min(52, 640 / max(n, 1))
+        for i, (key, label, colour, fam) in enumerate(styles):
+            parts += make_bottle(key, colour, fam, 800 - step * (n - 1) / 2 + i * step)
+        ALL_TOUCH = parts
+        bottle_neon(True)
+    else:
+        parts = T[ITEM]
+    reg = bbox_world(parts, 10)
+    big = {'menu': 8.0, 'honey': 7.0, 'dice': 14.0, 'bottles': 5.0}[ITEM]
+    png = render_region('preview_' + ITEM + '_alone', reg, big, parts, True, 96)
+    im = Image.open(png).convert('RGBA'); bgc = Image.new('RGBA', im.size, (38, 27, 21, 255)); bgc.alpha_composite(im)
+    bgc.convert('RGB').save(os.path.join(PV, ITEM + '-alone.png'))
+    x0, y0, x1, y1 = reg; mx_, my_ = (x0 + x1) / 2, (y0 + y1) / 2; hw, hh = max(x1 - x0, 120), max(y1 - y0, 90)
+    ctx = (mx_ - hw * 1.1, my_ - hh * 0.9, mx_ + hw * 1.1, my_ + hh * 0.75)
+    png = render_region('preview_' + ITEM + '_bar', ctx, 4.0 if ITEM != 'dice' else 8.0, WORLD_OBJS + list(parts), False, 64)
+    Image.open(png).convert('RGB').save(os.path.join(PV, ITEM + '-in-bar.png'))
+    print('[preview]', PV, json.dumps(LOG), flush=True)
+    sys.exit(0)
 
 MAN['renderLog'] = MAN.get('renderLog', [])
 MAN['renderLog'] = [x for x in MAN['renderLog'] if x['layer'] not in {l['layer'] for l in LOG}] + LOG
