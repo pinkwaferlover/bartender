@@ -48,7 +48,7 @@
    ],
    "fps": 10,
    "hold": 0,
-   "secondsPerFrame": 4.2
+   "secondsPerFrame": 5.8
   },
   "stir": {
    "frames": [
@@ -104,7 +104,7 @@
    ],
    "fps": 8.5,
    "hold": 21,
-   "secondsPerFrame": 4.0
+   "secondsPerFrame": 5.3
   },
   "shake": {
    "frames": [
@@ -181,7 +181,7 @@
    ],
    "fps": 8,
    "hold": 0,
-   "secondsPerFrame": 4.3
+   "secondsPerFrame": 6.0
   },
   "dip": {
    "frames": [
@@ -301,7 +301,7 @@
      ],
      "fps": 8.5,
      "hold": 21,
-     "secondsPerFrame": 5.1
+     "secondsPerFrame": 6.5
     },
     "shake": {
      "frames": [
@@ -378,7 +378,7 @@
      ],
      "fps": 8,
      "hold": 0,
-     "secondsPerFrame": 5.5
+     "secondsPerFrame": 7.6
     },
     "dip": {
      "frames": [
@@ -498,7 +498,7 @@
      ],
      "fps": 8.5,
      "hold": 21,
-     "secondsPerFrame": 3.3
+     "secondsPerFrame": 4.5
     },
     "shake": {
      "frames": [
@@ -575,7 +575,7 @@
      ],
      "fps": 8,
      "hold": 0,
-     "secondsPerFrame": 3.7
+     "secondsPerFrame": 5.2
     },
     "dip": {
      "frames": [
