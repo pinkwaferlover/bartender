@@ -58,6 +58,14 @@ class Strip {
     this.bind(); this.draw();
   }
   clamp(x) { return Math.max(this.minX, Math.min(this.maxX, x)); }
+  /* on resize or rotation: keep the card that was first in view, re-fit the bounds */
+  remeasure(o) {
+    const first = Math.round((this.maxX - this.x) / this.step);
+    this.w = o.itemW; this.gap = o.gap; this.pad = o.pad; this.items.forEach(e => { e.style.width = this.w + 'px'; });
+    this.W = this.h.clientWidth; this.step = this.w + this.gap;
+    this.maxX = this.pad; this.minX = Math.min(this.maxX, this.W - this.pad - this.n * this.step + this.gap);
+    cancelAnimationFrame(this.raf); this.x = this.clamp(this.maxX - first * this.step); this.draw();
+  }
   draw() { this.items.forEach((e, k) => { e.style.transform = `translate3d(${(this.x + k * this.step).toFixed(1)}px,0,0)`; }); }
   animateTo(target) {
     cancelAnimationFrame(this.raf);
@@ -138,7 +146,7 @@ const SHOTS = {
   intro: { L: [440, 40, 720, 200], P: [452, 40, 696, 200] },
   home: { L: [160, 20, 1280, 800], P: [446, -60, 830, 1250] },
   menu: { L: [MENU_R.x - 30, MENU_R.y - 14, MENU_R.w + 60, MENU_R.h + 28], P: [MENU_R.x - 8, MENU_R.y - 6, MENU_R.w + 16, MENU_R.h + 12] },
-  shelf: { L: [420, 200, 760, 475], P: [440, 180, 720, 400] },
+  shelf: { L: [420, 200, 760, 475], P: [440, -8, 720, 400] },   /* phone: anchored at the top, so the shelf sits above the Your bar sheet */
   talk: { L: [470, 300, 800, 430], P: [600, 300, 400, 420] },
   /* R10: the card on the left, Dionysus sharp on the right, doing the step */
   recipe: { L: [300, 296, 736, 470], P: [560, 236, 480, 560] },
@@ -152,7 +160,7 @@ function fit([x, y, w, h], anchor) {
 }
 function shotRect(name) {
   const s = SHOTS[name], phone = innerWidth < innerHeight && s.P;
-  return fit(phone ? s.P : s.L, phone && name === 'recipe' ? 'top' : null);
+  return fit(phone ? s.P : s.L, phone && (name === 'recipe' || name === 'shelf') ? 'top' : null);
 }
 function cam(name, dur = 900) {
   shotName = name; showPatch(name); const to = shotRect(name), from = vb.slice();
@@ -444,9 +452,16 @@ function menuBody(tab) {
   if (tab === 'feel') return Object.entries(FEELS).map(([k, v]) => sec(feelIco(FEEL_ICON4[k], 26), v, R.filter(r => feelOf(r) === k), 'feel')).join('');
   return `<div class="az" id="az" tabindex="0" aria-label="A to Z. Arrow keys move round the letters."></div>`;
 }
+const stripOpts = () => ({ itemW: phoneMenu() ? 124 : 150, gap: phoneMenu() ? 12 : 20, pad: phoneMenu() ? 16 : 24 });
+let menuStrips = [];
+/* the menu re-measures (debounced) on resize and rotation: strips keep their place, the ring keeps its letter, the list keeps its scroll */
+let menuRT; addEventListener('resize', () => { clearTimeout(menuRT); menuRT = setTimeout(() => {
+  if (panel.hidden || !panel.classList.contains('menucard')) return;
+  menuStrips.forEach(st => st.h.isConnected && st.remeasure(stripOpts()));
+  const az = $('#az'); if (az && az._remeasure) az._remeasure(); }, 150); });
 function fillMenu(tab) {
   const body = panel.querySelector('.mbody'); body.innerHTML = menuBody(tab); body.scrollTop = 0;
-  body.querySelectorAll('.strip').forEach(h => new Strip(h, { itemW: phoneMenu() ? 124 : 150, gap: phoneMenu() ? 12 : 20, pad: phoneMenu() ? 16 : 24 }));
+  menuStrips = [...body.querySelectorAll('.strip')].map(h => new Strip(h, stripOpts()));
   if (tab === 'az') mountAZ($('#az'));
   wireDrinks();
 }
@@ -466,9 +481,11 @@ function wireDrinks() { panel.querySelectorAll('.dc').forEach(b => b.onclick = (
 const ALPHA = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 function mountAZ(az) {
   if (!az) return;
-  const small = phoneMenu();
+  let small = phoneMenu();
   const byL = {}; [...R].sort((a, b) => a.name.localeCompare(b.name)).forEach(r => { const k = r.name[0].toUpperCase(); (byL[k] = byL[k] || []).push(r); });
-  const W = az.clientWidth, H = az.clientHeight, cx = W / 2, cy = H / 2, RR = Math.min(W, H) * (small ? .43 : .44), R2 = RR * .55, LH = small ? 20 : 24, IW = small ? 43 : 52;
+  let W, H, cx, cy, RR, R2, LH, IW;
+  const measure = () => { small = phoneMenu(); W = az.clientWidth; H = az.clientHeight; cx = W / 2; cy = H / 2; RR = Math.min(W, H) * (small ? .43 : .44); R2 = RR * .55; LH = small ? 20 : 24; IW = small ? 43 : 52; };
+  measure();
   const els = [...ALPHA].map(c => { const e = document.createElement('div'); e.className = 'lt' + (byL[c] ? '' : ' none'); e.textContent = c; e.setAttribute('aria-hidden', 'true'); az.appendChild(e); return e; });
   const pos = (n, N, r) => { const a = (n / N) * 2 * Math.PI - Math.PI / 2; return [cx + r * Math.cos(a), cy + r * Math.sin(a), a]; };
   const fish = (d, sd) => Math.exp(-(d * d) / (2 * sd * sd));
@@ -495,6 +512,8 @@ function mountAZ(az) {
   const aim = p => { if (mode === 'letters') { fL = p.a * 26; drawLetters(); const k = Math.round(fL) % 26; if (k !== last) { last = k; if (byL[ALPHA[k]] && ALPHA[k] !== shown) buildInner(ALPHA[k], true); try { navigator.vibrate && navigator.vibrate(4); } catch (_) {} } }
     else if (mode === 'drinks') { fD = p.a * inner.length; drawInner(); } };
   drawLetters();
+  /* on resize or rotation: new geometry, same letter and drinks, no entrance animation again */
+  az._remeasure = () => { measure(); drawLetters(); drawInner(); };
   az.addEventListener('pointerdown', e => { const p = polar(e); mode = zone(p); if (mode === 'centre') { mode = null; return; } try { az.setPointerCapture(e.pointerId); } catch (_) {} aim(p); });
   const rest = () => { fL = letter ? ALPHA.indexOf(letter) : null; drawLetters(); if (fD != null) { fD = null; drawInner(); } };
   az.addEventListener('pointermove', e => { const p = polar(e); if (mode) return aim(p); if (e.pointerType !== 'mouse') return; const z = zone(p);
@@ -615,7 +634,7 @@ function openRecipe(id, chosen) {
   golden = Math.random() < .15;
   const swaps = swapsFor(r);
   const worth = chosen && chosen.worth;
-  let pic = glassSide(r, 88); if (golden) pic = pic.replace('fill="var(--glass)"/>', 'fill="var(--glass)" stroke="#e8c45a" stroke-width="3"/>');
+  let pic = glassSide(r, 76); if (golden) pic = pic.replace('fill="var(--glass)"/>', 'fill="var(--glass)" stroke="#e8c45a" stroke-width="3"/>');
   panel.className = 'panel recipe'; panel.hidden = false;
   panel.innerHTML = `<div class="rtop">${chosen ? `<div class="kicker">${diceHTML(14)}<span>Barman’s choice${worth ? ` · <b>worth buying a bottle for</b>` : ''}</span></div>` : ''}
    <button class="again" id="againDice" aria-label="Another barman’s choice">${diceHTML(22)}</button>
