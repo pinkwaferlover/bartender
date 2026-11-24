@@ -328,8 +328,8 @@ def glass_material():
     return m
 
 
-if FINISH == 'painted':
-    M_SKIN = marble_material()
+if FINISH == 'painted':   # warm painted flesh (ganosis), a touch of AO so the face is modelled, not a flat white mask
+    M_SKIN = marble_material(lo='#c7a48e', hi='#ecd6c4', ao=0.3, ao_dist=0.08, sss=(0.16, 0.08, 0.05))
     M_EYE = eye_material()
     M_HAIR = marble_material('hair_painted', paint=False, lo='#4a2a1c', hi='#7a4a2e', rough=0.5, ao=0.55, ao_dist=0.05)
     M_IVY = mat('ivy_painted', '#3f7a34', 0.45); M_IVY2 = mat('ivy_painted2', '#2f6428', 0.45)
@@ -359,14 +359,14 @@ V = verts_rest
 mouth = np.mean([bone_head(b) for b in ('oris01', 'oris02', 'oris05', 'oris06')], axis=0)
 eyeL, eyeR = np.array(bone_head('eye.L')), np.array(bone_head('eye.R'))
 front_y = V[np.linalg.norm(V[:, [0, 2]] - mouth[[0, 2]], axis=1) < 0.02][:, 1].min()
-col = np.zeros((len(V), 4)); col[:, :3] = srgb('#b0564c')[:3]
+col = np.zeros((len(V), 4)); col[:, :3] = srgb('#a8443e')[:3]
 dx, dz = (V[:, 0] - mouth[0]) / 0.026, (V[:, 2] - (mouth[2] - 0.002)) / 0.009
 lips = np.clip(1.4 - (dx ** 2 + dz ** 2), 0, 1) * (V[:, 1] < front_y + 0.018)
-a = lips * 0.75
+a = lips * 0.88
 for eye in (eyeL, eyeR):
     c = np.array([eye[0] * 1.15, front_y + 0.03, (eye[2] + mouth[2]) / 2 - 0.004])
-    d = np.linalg.norm((V - c) / np.array([0.026, 0.03, 0.022]), axis=1)
-    cheek = np.clip(1 - d, 0, 1) ** 1.2 * 0.5
+    d = np.linalg.norm((V - c) / np.array([0.03, 0.034, 0.026]), axis=1)
+    cheek = np.clip(1 - d, 0, 1) ** 1.1 * 0.62
     blend = cheek / np.maximum(a + cheek, 1e-6)
     tint = np.array(srgb('#d2604e')[:3])
     col[:, :3] = col[:, :3] * (1 - blend[:, None]) + tint[None] * blend[:, None]
@@ -1537,7 +1537,7 @@ LOOPS = {
     'story': (L_story, 16, 8, 0, ()),
     'dip': (L_dip, 28, 8.5, 22, ('thyrsus',)),
 }
-RECT = (560, 290, 1040, 640)     # world rect of every frame (the counter clips him below ~630 in the app)
+RECT = tuple(float(v) for v in _arg('--rect', '560,290,1040,640').split(','))   # world rect of every frame (the counter clips him below ~630 in the app)
 K = float(_arg('--k', '1.2'))    # pixels per world unit
 SAMPLES = int(_arg('--samples', '16'))
 
