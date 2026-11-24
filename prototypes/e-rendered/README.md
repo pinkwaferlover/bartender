@@ -12,7 +12,7 @@ Prototype B's layout, logic and zoom model, with the bar rendered in Blender (R1
 | Background, one per camera position (bar, sign lit and unlit, shelf, mid for talk/recipe/choice, menu) | `blender/build_bar.py` | `img/bg-*.webp` |
 | Touchables: menu, panther with dice, honey jar | rendered alone on a transparent film | `img/touch-*.webp` |
 | Bottles, one per Style (26) | rendered on the shelf, placed by the app | `img/bottle-*.webp` |
-| Dionysus | prototype B's drawn figure, his own swappable layer | `dio-layer.js` |
+| Dionysus | rendered loops of a MakeHuman figure, his own swappable layer (B's drawn figure is the fallback) | `blender/build_dionysus.py`, `img/dio/<finish>/<loop>/*.webp`, `dio-loops.json`, `dio-layer.js` |
 
 `layers.js` is written by the build script and says where each image sits in B's world units.
 
@@ -29,7 +29,26 @@ Cycles on the CPU (Eevee needs a GPU here), 64 samples with adaptive sampling an
 
 ## Dionysus loops (R4)
 
-`dio-layer.js` defines the interface. When rendered loops exist, open `index.html?dio=loops&loops=<manifest>`; `dio-loops.example.json` shows the manifest's shape (one loop per action: polish, stir, pour, shake, reach, story; frames or a video).
+`blender/build_dionysus.py` builds him on a MakeHuman base (MPFB2, R3) shaped towards the Louvre Dionysus and renders one loop per action: polish (idle), stir, pour, shake, reach, story, and dip (the thyrsus into the honey jar, R8). Each loop is rendered in three finishes (Q8): painted marble (the default), white marble and living skin. Coverage stays classical in every finish; modest and cheeky apply only to the drawn fallback figure (Q9).
+
+```sh
+git clone --depth 1 https://github.com/makehumancommunity/mpfb2
+cp -r mpfb2/src/mpfb ~/.config/blender/5.3/extensions/user_default/
+.venv-blender/bin/python prototypes/e-rendered/blender/build_dionysus.py                  # all loops, painted
+.venv-blender/bin/python prototypes/e-rendered/blender/build_dionysus.py --finish white   # white | living
+.venv-blender/bin/python prototypes/e-rendered/blender/build_dionysus.py --only stir      # one loop
+.venv-blender/bin/python prototypes/e-rendered/blender/build_dionysus.py --still stir --crop head --scale 3   # a close-up to check
+```
+
+`dio-loops.json` lists the frames: `loops` is painted marble, `finishes.white` and `finishes.living` hold the other two; `dio-loops.example.json` shows the shape. `dio-layer.js` plays them:
+
+- The drawn figure stays hidden while the loops load, and shows only if they fail or take longer than 1.5 s.
+- A recipe step plays its loop for at least 3.2 s, then holds on its tail (from `hold`) until you tap (R6). Honey steps play `dip`.
+- The look setting's finish switches frame sets in place, loading a finish only when it is chosen.
+- Changing loop crossfades for 180 ms. With reduced motion, every loop is one still frame and there is no crossfade.
+- `?dio=svg` shows the drawn figure instead; `?loops=<manifest>` loads another manifest.
+
+Contact sheets of every loop and finish, and face crops, are in `shots/dio/`.
 
 ## Checks
 

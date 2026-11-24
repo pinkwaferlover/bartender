@@ -1,13 +1,18 @@
 {
-  "_about": "The shape of a rendered-loops manifest for dio-layer.js (R4). Not used yet: his body waits for R13. Open index.html?dio=loops&loops=<this file's path> once real frames exist. rect and head are in world units (prototype B's SVG space: he stands at x 800, feet at y 672). Each loop is a list of frames or a video. A recipe step plays its loop once, then repeats from 'hold' (a frame index, or seconds for video) while he waits for your tap.",
-  "rect": [600, 300, 400, 380],
-  "head": [750, 330, 100, 110],
+  "_about": "The shape of a rendered-loops manifest for dio-layer.js (R4). The real one is dio-loops.json, written by blender/build_dionysus.py; another can be given with index.html?loops=<path>. rect and head are in world units (prototype B's SVG space: he stands at x 800, feet at y 672). 'loops' is the default finish (painted marble); 'finishes' holds the other finishes (Q8), each with the same seven loops, loaded only when chosen. A loop is a list of frames or a video. A recipe step plays its loop for at least 3.2 s, then repeats from 'hold' (a frame index, or seconds for video) while he waits for your tap; hold 0 means a cycle whose first frame is the still he waits on. A loop missing from a finish falls back to the default finish's loop, dip falls back to stir, anything else to polish.",
+  "rect": [560, 290, 480, 350],
+  "head": [740, 300, 120, 150],
   "loops": {
-    "polish": { "frames": ["loops/polish/0001.webp", "loops/polish/0002.webp"], "fps": 12 },
-    "stir":   { "frames": ["loops/stir/0001.webp"], "fps": 12, "hold": 20 },
-    "pour":   { "frames": ["loops/pour/0001.webp"], "fps": 12, "hold": 24 },
-    "shake":  { "video": "loops/shake.webm", "hold": 2.0 },
-    "reach":  { "frames": ["loops/reach/0001.webp"], "fps": 12, "hold": 18 },
-    "story":  { "frames": ["loops/story/0001.webp"], "fps": 12 }
+    "polish": { "frames": ["img/dio/painted/polish/0001.webp", "img/dio/painted/polish/0002.webp"], "fps": 10, "hold": 0 },
+    "stir":   { "frames": ["img/dio/painted/stir/0001.webp"], "fps": 10, "hold": 0 },
+    "pour":   { "frames": ["img/dio/painted/pour/0001.webp"], "fps": 8.5, "hold": 21 },
+    "shake":  { "video": "img/dio/painted/shake.webm", "hold": 0 },
+    "reach":  { "frames": ["img/dio/painted/reach/0001.webp"], "fps": 8.5, "hold": 24 },
+    "story":  { "frames": ["img/dio/painted/story/0001.webp"], "fps": 8, "hold": 0 },
+    "dip":    { "frames": ["img/dio/painted/dip/0001.webp"], "fps": 8.5, "hold": 22 }
+  },
+  "finishes": {
+    "white":  { "loops": { "polish": { "frames": ["img/dio/white/polish/0001.webp"], "fps": 10, "hold": 0 } } },
+    "living": { "loops": { "polish": { "frames": ["img/dio/living/polish/0001.webp"], "fps": 10, "hold": 0 } } }
   }
 }

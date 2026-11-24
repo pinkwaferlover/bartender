@@ -354,9 +354,18 @@ function LoopDio(root) {
       hitPath();
     }
   }
+  // a short crossfade when the loop changes: the old frame fades out over the new one (none with reduced motion)
+  const XFADE_MS = 180;
+  function crossfade() {
+    if (RM || !imgEl || !imgEl.isConnected || !imgEl.getAttribute('href')) return;
+    const old = imgEl.cloneNode(); old.removeAttribute('id');
+    imgEl.after(old);
+    old.animate([{ opacity: 1 }, { opacity: 0 }], { duration: XFADE_MS, easing: 'ease-out', fill: 'forwards' }).onfinish = () => old.remove();
+  }
   function set(name, oneShot) {
     if (!M) return;
     const p = pick(S, name); if (!p) return;
+    if (cur && cur.real !== p.name) crossfade();
     cur = { name, L: p.L, real: p.name, oneShot }; f = 0; ft = 0; actT = 0; waiting = false;
     build(cur.L);
     if (cur.L.frames) { if (!RM) cur.L.frames.forEach(preload); f = startF(cur.L); show(cur.L.frames[f]); }
