@@ -188,12 +188,28 @@ const LIFTED = ['honey', 'menu', 'lamp', 'panther'];
   el('stop', { offset: '0', 'stop-color': '#ffd08a', 'stop-opacity': '.75' }, gr); el('stop', { offset: '.55', 'stop-color': '#e2ae5c', 'stop-opacity': '.28' }, gr); el('stop', { offset: '1', 'stop-color': '#e2ae5c', 'stop-opacity': '0' }, gr);
   const wrap = (host, nodes) => { const g = el('g', { class: 'lift' }); host.insertBefore(g, nodes[0]); nodes.forEach(n => g.appendChild(n)); return g; };
   LIFTED.forEach(id => { const t = $('#' + id); wrap(t, [...t.children]); });
+  /* the lamp as a small brass oil lamp; the spout's flame is the one warm light on it */
+  const lg = (id, stops, attrs) => { const g = el(attrs.r ? 'radialGradient' : 'linearGradient', { id, ...attrs }, defs); stops.forEach(([o, c, op = 1]) => el('stop', { offset: o, 'stop-color': c, 'stop-opacity': op }, g)); };
+  lg('brassGrad', [['0', '#a97a36'], ['.45', '#6c4a1c'], ['1', '#36240b']], { x1: 0, y1: 0, x2: 0, y2: 1 });
+  lg('brassRim', [['0', '#e2b866'], ['1', '#7a5520']], { x1: 0, y1: 0, x2: 1, y2: 0 });
+  lg('flameGrad', [['0', '#fff6d6'], ['.35', '#ffd27a'], ['.75', '#ff9a2e'], ['1', '#e0561a', .85]], { x1: 0, y1: 1, x2: 0, y2: 0 });
+  lg('lampHalo', [['0', '#ffd07a', .9], ['.4', '#ffb050', .4], ['1', '#ff9a40', 0]], { r: '.5' });
+  const oil = el('g', { class: 'oil' }, $('#lamp .lift'));
+  oil.innerHTML = `<circle class="halo" cx="29" cy="-33" r="16" fill="url(#lampHalo)"/>
+    <ellipse cx="0" cy="-1.5" rx="10" ry="2.2" fill="#2a1c0c" opacity=".6"/>
+    <path d="M-8 -2 L-5 -9 H5 L8 -2 Z" fill="url(#brassGrad)"/>
+    <path d="M-15 -16 Q-15 -25 0 -25 Q13 -25 17 -19 L28 -24 Q31 -25 30 -21.5 L21 -13 Q15 -9 0 -9 Q-15 -9 -15 -16 Z" fill="url(#brassGrad)" stroke="#3a270e" stroke-width=".6"/>
+    <path d="M-11 -20 Q-4 -23 6 -22" fill="none" stroke="#f0cf86" stroke-width="1.1" stroke-linecap="round" opacity=".7"/>
+    <path d="M-15 -17 Q-24 -19 -22 -12 Q-20 -7 -13 -11" fill="none" stroke="url(#brassRim)" stroke-width="2.2" stroke-linecap="round"/>
+    <ellipse cx="0" cy="-25.5" rx="5" ry="1.6" fill="#6e4b1e"/><circle cx="0" cy="-28" r="2" fill="url(#brassRim)"/>
+    <path class="flame" d="M29.3 -24 C25.5 -27 26 -32 29.6 -40 C32.8 -33 33.4 -27.5 29.3 -24 Z" fill="url(#flameGrad)"/>
+    <path d="M29.4 -25 C28 -26.5 28.3 -29 29.6 -31.5 C30.8 -29 30.9 -26.6 29.4 -25 Z" fill="#fffbe8" opacity=".9"/>`;
   wrap($('#shelf'), [$('#bottles')]);
   [...LIFTED, 'shelf'].forEach(id => { const t = $('#' + id);
     t.insertBefore(el('rect', { class: 'hit' }), t.firstChild); t.appendChild(el('rect', { class: 'ring', rx: 8 })); });
   const pools = el('g', { id: 'pools', 'pointer-events': 'none' }); svg.insertBefore(pools, $('#counterThings'));
   LIFTED.forEach(id => {
-    const L = id === 'lamp' ? { x: 690 - 18, y: 655 - 100, w: 36, h: 100 } : id === 'panther' ? LAYERS.touch.panther : LAYERS.touch[id];
+    const L = id === 'lamp' ? { x: 690 - 22 * 1.35, y: 655 - 40 * 1.35, w: 55 * 1.35, h: 40 * 1.35 } : id === 'panther' ? LAYERS.touch.panther : LAYERS.touch[id];
     el('ellipse', { class: 'lpool', 'data-for': id, cx: L.x + L.w / 2, cy: L.y + L.h + 1, rx: Math.max(56, L.w * .85), ry: 18, fill: 'url(#poolGrad)' }, pools);
   });
   /* press: lift a little; keyboard: Enter or Space acts like a tap on any touchable */

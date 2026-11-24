@@ -11,7 +11,7 @@
   "choice": {
    "taps": 1,
    "recipe": true,
-   "kicker": "🎲 Barman’s choice"
+   "kicker": "Barman’s choice"
   },
   "phoneChoice": {
    "recipe": true
@@ -32,7 +32,7 @@
   "waiting": true,
   "dioBlur": "none",
   "advancedByTap": 1,
-  "pasteRead": 9,
+  "pasteRead": 8,
   "phoneInFrame": [
    [
     "menu",
@@ -57,7 +57,7 @@
    "waiting": true
   }
  },
- "weightMB": 1.47,
- "files": 51,
+ "weightMB": 1.53,
+ "files": 52,
  "errors": []
 }

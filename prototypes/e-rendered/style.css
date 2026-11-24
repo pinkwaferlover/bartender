@@ -30,13 +30,14 @@ svg.ghost{opacity:.3}
    and a press lifts the thing a little, as if picked up. Focus gets a clear gold ring. */
 .touch{cursor:pointer;outline:none;-webkit-tap-highlight-color:transparent}
 .touch .lift{transform-box:fill-box;transform-origin:50% 100%;transition:transform .18s var(--e),filter .25s var(--e)}
-.touch:hover .lift,.touch:focus-visible .lift,.touch.lit .lift{filter:drop-shadow(0 0 1.5px rgba(255,226,180,1)) drop-shadow(0 0 2px rgba(255,214,150,.7)) drop-shadow(0 0 16px rgba(226,174,92,.5))}
+/* nothing traces the silhouette (it fringes the rendered glass like a sticker): a slight brightness lift, the lamplight pool beneath, the press lift */
+.touch:hover .lift,.touch:focus-visible .lift,.touch.lit .lift{filter:brightness(1.1)}
 .touch:active .lift,.touch.pressed .lift{transform:translateY(-3px) scale(1.025)}
 .touch .hit{fill:transparent;pointer-events:all}
 .touch .ring{fill:none;stroke:var(--acc);stroke-width:2px;vector-effect:non-scaling-stroke;display:none;pointer-events:none}
 .touch:focus-visible .ring{display:inline}
 .touch.hinting .lift{animation:pulse 1.5s 3}
-@keyframes pulse{50%{filter:drop-shadow(0 0 1.5px #ffdeaa) drop-shadow(0 0 12px rgba(226,174,92,.6))}}
+@keyframes pulse{50%{filter:brightness(1.16)}}
 .lpool{opacity:.3;mix-blend-mode:screen;transition:opacity .3s var(--e);pointer-events:none}
 #scene:has(#honey:is(:hover,:focus-visible,.lit,.hinting)) .lpool[data-for=honey],
 #scene:has(#menu:is(:hover,:focus-visible,.lit,.hinting)) .lpool[data-for=menu],
@@ -44,15 +45,14 @@ svg.ghost{opacity:.3}
 #scene:has(#panther:is(:hover,:focus-visible,.lit,.hinting)) .lpool[data-for=panther]{opacity:.9}
 /* Dionysus: rim only. He must stay sharp and unbleached (R10) */
 #dio{transition:filter .25s var(--e)}
-#dio:hover,#dio.lit{filter:drop-shadow(0 0 1px rgba(255,222,170,.85)) drop-shadow(0 0 5px rgba(226,174,92,.25))}
+#dio:hover,#dio.lit{filter:brightness(1.05)}
 #dio .ring{stroke-width:3px}
 /* the shelf: the bottles lift as one when it is touched; each keeps its own shadow */
 #shelf .lift{transform-origin:50% 100%}
 #shelf:active .lift,#shelf.pressed .lift{transform:translateY(-2px)}
-.btl image{filter:drop-shadow(0 2px 2px rgba(0,0,0,.5))}
 .btl.dusty image{filter:saturate(.3) brightness(.5)}
 @keyframes bdrop{from{transform:translateY(-60px);opacity:0}to{transform:none;opacity:1}}
-#dice image{filter:drop-shadow(0 3px 2px rgba(0,0,0,.6));transform-box:fill-box;transform-origin:50% 50%}
+#dice image{transform-box:fill-box;transform-origin:50% 50%}
 #panther:hover #dice image,#panther:focus-visible #dice image{animation:jig .5s var(--e)}
 @keyframes jig{30%{transform:translateY(-4px) rotate(-12deg)}60%{transform:rotate(5deg)}}
 #hints{position:absolute;inset:0;pointer-events:none;z-index:15}
@@ -487,3 +487,10 @@ svg.ghost{opacity:.3}
 /* sheets: the main buttons stay in view; the content scrolls under them */
 .sheet .row{position:sticky;bottom:-20px;z-index:2;margin:6px -26px -20px;padding:12px 26px 20px;background:linear-gradient(rgba(27,25,28,0),#1b191c 14px)}
 @media (max-width:640px){ .sheet .row{bottom:-14px;margin:6px -16px -14px;padding:12px 16px 14px} }
+
+/* the settings lamp: a small brass oil lamp with a live flame (the drawn lava lamp in index.html is hidden, not removed) */
+#lamp .lift>:not(.oil){display:none}
+#lamp .flame{transform-box:fill-box;transform-origin:50% 100%;animation:flick 2.6s ease-in-out infinite}
+#lamp .halo{animation:haloflick 2.6s ease-in-out infinite}
+@keyframes flick{0%,100%{transform:scale(1,1) skewX(0)}22%{transform:scale(.94,1.06) skewX(-3deg)}48%{transform:scale(1.03,.95) skewX(2deg)}71%{transform:scale(.97,1.04) skewX(-1deg)}}
+@keyframes haloflick{0%,100%{opacity:.55}30%{opacity:.68}60%{opacity:.5}}
