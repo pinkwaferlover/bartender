@@ -102,7 +102,14 @@ def sheets_from_frames():
     print('[sheets] written to', SHOTS)
 
 
-QUALITY = int(_arg('--q', '42')); ALPHA_Q = int(_arg('--aq', '10'))   # webp: the silhouette's alpha is ~40% of the bytes
+# webp: the face needs q75 at 1.8 px/unit (q50-60 block the cheeks and lose the eyes); the alpha is cheap at
+# alpha_quality 0 (clean edges over the bar). --qmap sets a quality per finish, e.g. painted:75,white:68
+QMAP = {k_: int(v_) for k_, v_ in (x.split(':') for x in _arg('--qmap', 'painted:75,white:70,living:72').split(','))}
+QUALITY = int(_arg('--q', str(QMAP.get(FINISH, 75)))); ALPHA_Q = int(_arg('--aq', '0'))
+
+
+def webp_meta():
+    return {'quality': QMAP.get('painted', QUALITY), 'qualityByFinish': QMAP, 'alphaQuality': ALPHA_Q, 'method': 6}
 
 
 def reencode():
@@ -110,11 +117,12 @@ def reencode():
     from PIL import Image
     work = os.path.join(HERE, '_work'); n = 0
     for fin in FINISHES:
+        q_ = QMAP.get(fin, QUALITY)
         for d in sorted(os.listdir(os.path.join(DIO, fin))):
             for f in sorted(os.listdir(os.path.join(DIO, fin, d))):
                 src = os.path.join(work, f'dio_{fin}_{d}_{int(f[:4]) - 1:02d}.png')
-                Image.open(src).convert('RGBA').save(os.path.join(DIO, fin, d, f), 'WEBP', quality=QUALITY, method=6, alpha_quality=ALPHA_Q); n += 1
-    man = json.load(open(MAN_P)); man['render']['webp'] = {'quality': QUALITY, 'alphaQuality': ALPHA_Q, 'method': 6}
+                Image.open(src).convert('RGBA').save(os.path.join(DIO, fin, d, f), 'WEBP', quality=q_, method=6, alpha_quality=ALPHA_Q); n += 1
+    man = json.load(open(MAN_P)); man['render']['webp'] = webp_meta()
     json.dump(man, open(MAN_P, 'w'), indent=1); print('[reencode]', n, 'frames')
 
 
@@ -329,7 +337,7 @@ def glass_material():
 
 
 if FINISH == 'painted':   # warm painted flesh (ganosis), a touch of AO so the face is modelled, not a flat white mask
-    M_SKIN = marble_material(lo='#c7a48e', hi='#ecd6c4', ao=0.3, ao_dist=0.08, sss=(0.16, 0.08, 0.05))
+    M_SKIN = marble_material(lo='#c29c84', hi='#e8cfba', ao=0.3, ao_dist=0.08, sss=(0.16, 0.08, 0.05))
     M_EYE = eye_material()
     M_HAIR = marble_material('hair_painted', paint=False, lo='#4a2a1c', hi='#7a4a2e', rough=0.5, ao=0.55, ao_dist=0.05)
     M_IVY = mat('ivy_painted', '#3f7a34', 0.45); M_IVY2 = mat('ivy_painted2', '#2f6428', 0.45)
@@ -816,7 +824,12 @@ ea = hm.attributes.new('edge', 'FLOAT', 'POINT'); ea.data.foreach_set('value', e
 bpy.data.objects.remove(him_c, do_unlink=True)
 him = bpy.data.objects.new('himation', hm); link(him); hm.materials.clear(); hm.materials.append(M_HIMATION)
 for p in hm.polygons: p.use_smooth = True
-parent_head(him, 'spine02')
+# skinned: over the left shoulder it rides the shoulder girdle (and a little of the upper arm), so a raised or
+# crossing left arm carries the drape with it instead of pushing the deltoid through it; the rest rides the chest
+_hv = np.array([tuple(v.co) for v in hm.vertices])
+_dsh = np.linalg.norm((_hv - np.array(p0)) / np.array([1.0, 1.4, 1.0]), axis=1)
+_wsh = np.clip(1 - (_dsh - 0.05) / 0.13, 0, 1) ** 1.5
+skin_to(him, {'spine02': 1 - 0.85 * _wsh, 'clavicle.L': 0.25 * _wsh, 'shoulder01.L': 0.4 * _wsh, 'upperarm01.L': 0.2 * _wsh})
 print('[himation] mesh', len(hm.vertices), 'verts,', NP_, 'per ring')
 
 # ---------------------------------------------------------------- the rig: IK arms, posing helpers
@@ -1065,8 +1078,8 @@ def pmat(name, *a, **k):
 
 M_GLASS = glass_material()
 M_CLOTH = fawn_material()
-M_STEEL = mat('shaker', '#e2d2ae', 0.3, 0.55)
-M_STEEL2 = mat('shaker_cap', '#c9a24a', 0.3, 0.7)
+M_STEEL = mat('shaker_tin', '#eeece8', 0.3, 0.62)        # brushed stainless: bright highlights, so it reads as metal
+M_STEEL2 = mat('shaker_ring', '#b9b4ac', 0.32, 0.9)
 M_BOTTLE = mat('dio_bottle', '#7a3612', 0.18, coat=0.6)
 M_BOTTLE2 = mat('dio_bottle2', '#2f4a2a', 0.18, coat=0.6)
 M_LABEL = mat('dio_label', '#f1e6cf', 0.7)
@@ -1158,11 +1171,15 @@ def prop_bottle(name='p_bottle', r0=0.17, h=1.25, m_=None):
 
 
 def prop_shaker():
-    """A two-part shaker: a tin and its cap. Origin at the bottom; about 0.9 tall."""
-    s_ = lathe('p_shaker', [(0, 0), (0, 0.15), (0.03, 0.165), (0.55, 0.205), (0.57, 0.21), (0.6, 0.195)], M_STEEL, 32); smooth(s_)
-    c_ = lathe('p_shaker_cap', [(0.56, 0.2), (0.62, 0.21), (0.72, 0.17), (0.8, 0.1), (0.86, 0.09), (0.9, 0.0)], M_STEEL2, 32); smooth(c_)
-    c_.parent = s_
-    return s_
+    """A Boston shaker: a large steel tin, and a smaller tin upturned and seated in its mouth (cocked a little,
+    as it seals). Origin at the big tin's base, its axis local Z; about 1.0 long before SHK."""
+    big = lathe('p_shaker', [(0, 0), (0, 0.142), (0.012, 0.152), (0.6, 0.198), (0.615, 0.207), (0.625, 0.203), (0.6, 0.192)], M_STEEL, 40); smooth(big)
+    rim = lathe('p_shaker_band', [(0.035, 0.155), (0.06, 0.157)], M_STEEL2, 40); rim.parent = big   # a pressed ring near the base
+    small = lathe('p_shaker_small', [(0.5, 0.17), (0.62, 0.176), (0.63, 0.181), (0.64, 0.176), (0.96, 0.142), (0.975, 0.134), (0.985, 0.0)], M_STEEL, 40)
+    smooth(small); small.parent = big
+    small.matrix_parent_inverse = Matrix.Identity(4)
+    small.matrix_basis = Matrix.Translation((0, 0, 0.6)) @ Matrix.Rotation(math.radians(3.5), 4, 'X') @ Matrix.Translation((0, 0, -0.6))
+    return big
 
 
 def remove_obj(name):
@@ -1401,31 +1418,46 @@ def L_pour(t, pr):
         cu_ = curve_tube('p_stream', [mouth_ + Vector((0.02, 0, -0.02)), mid + Vector((wob, 0, 0)), bot], 0.028, taper_curve('stream', [(0, 1), (0.4, 0.7), (1, 0.55)]), M_POUR, 2)
 
 
-SHK = 1.3   # the shaker, larger so it reads
+SHK = 1.15  # the shaker, a little larger than life so it reads (about 1.15 heads long)
 
 
 def L_shake(t, pr):
-    """Recipe step (shake): the shaker on a diagonal in front of his chest, the tin in his right hand, the cap
-    under his left palm toward his left shoulder; two hard shakes a loop along its length, the body
-    following a beat behind; a grin throughout."""
-    sk = track(t * 2 % 1.0, [(0.0, -1.0), (0.1, -1.12), (0.42, 1.0), (0.52, 1.1), (0.86, -0.95)])
-    lag = track((t * 2 - 0.07) % 1.0, [(0.0, -1.0), (0.1, -1.12), (0.42, 1.0), (0.52, 1.1), (0.86, -0.95)])
-    body_pose(bend=4 + 3 * lag, twist=2 + 6 * lag, lean=4 * lag, pitch=8 - 6 * lag, yaw=-8 + 4 * lag,
-              roll=6 + 4 * lag, breath=0.6)
-    face(smile=0.9, open_=0.28 + 0.12 * lag, brow=(0.6, 0.55), look=(-6, 12), squint=0.75)
-    axis = Vector((0.62, -0.3, 1.0)).normalized()
-    c = S2W(CX + 4 + 24 * sk, 560 - 19 * sk, D_HAND - 0.1)
-    sh = pr['shaker']; base = c - axis * 0.45 * SHK
-    sh.matrix_world = axis_matrix(base, axis) @ Matrix.Diagonal((SHK, SHK, SHK, 1)); upd()
-    set_pole('R', (2.8, 1.4, -3.2)); set_pole('L', (2.8, 1.6, -3.0))
-    ex = axis.cross(Vector((0, -1, 0))).normalized()
-    if ex.x > 0: ex = -ex                                   # across the shaker, toward his right and down
-    rp = base + axis * 0.28 * SHK + ex * (0.24 * SHK)
-    lp = base + axis * (0.9 * SHK + 0.09)
+    """Recipe step (shake): the Boston shaker in both hands, his right palm over the big tin's base and his
+    left over the small tin's, shaken hard over his right shoulder: a big arc from up behind the shoulder to
+    down in front of his chest, fast through the middle and snapping at each end (the ice hits the end); the
+    shaker tips with the arc, the shoulders, torso and head follow a beat behind; a grin throughout.
+    Two strokes there and back a loop (12 frames at 12 fps)."""
+    ph = (t * 2) % 1.0; cyc = int(t * 2)
+    c_ = -math.cos(2 * math.pi * ph)
+    s_ = math.copysign(abs(c_) ** 0.72, c_) * (1.0 if cyc == 0 else 0.94)          # -1 back over the shoulder, +1 in front
+    snap = max(0.0, abs(c_) - 0.8) / 0.2 * math.copysign(1, c_)                         # the jolt at each end
+    lagc = -math.cos(2 * math.pi * ph - 0.75)                                          # the body, a beat behind
+    sway = math.sin(2 * math.pi * t)
+    body_pose(bend=3 + 3 * lagc, twist=-10 + 9 * lagc + 2 * sway, lean=-3 + 3.5 * lagc, pitch=6 + 4 * lagc - 3 * snap,
+              yaw=-5 + 4 * lagc + 2 * sway, roll=3 + 5 * lagc + 2 * snap, breath=0.6 + 0.3 * sway)
+    face(smile=0.95, open_=0.32 + 0.14 * max(0.0, -lagc), brow=(0.6, 0.65), look=(-10 - 4 * lagc, 10 + 3 * lagc), squint=0.75)
+    # the arc: back (up behind his right shoulder) to front (down before his chest), bowed up and out
+    A = Vector((CX - 160, 430, -1.0)); B = Vector((CX - 92, 520, -1.35))
+    u = 0.5 + 0.5 * s_
+    p = A.lerp(B, u) + Vector((-14, -16, -0.15)) * (1 - s_ * s_)
+    c = S2W(p.x, p.y, p.z)
+    # the shaker lies along the stroke, big tin up behind; it tips with the arc and flicks at the ends
+    tilt = math.radians(-14 * s_ - 6 * snap)
+    a0 = S2W(A.x, A.y, A.z); b0 = S2W(B.x, B.y, B.z); fw = (b0 - a0).normalized()
+    side_ = fw.cross(Vector((0, -1, 0))).normalized()
+    fw = (Quaternion(side_, tilt) @ fw).normalized()
+    L_ = 0.985 * SHK
+    org = c - fw * 0.5 * L_
+    sh = pr['shaker']; sh.matrix_world = axis_matrix(org, fw) @ Matrix.Diagonal((SHK, SHK, SHK, 1)); upd()
+    up_ = (Vector((0, 0, 1)) - fw * fw.dot(Vector((0, 0, 1)))).normalized()
+    out_ = (Vector((0, -1, 0)) - fw * fw.dot(Vector((0, -1, 0)))).normalized()
+    rp = org - fw * 0.07 + up_ * 0.03                    # his right palm cupping the big tin's base
+    lp = org + fw * (L_ + 0.07) + out_ * 0.02            # his left palm capping the small tin
+    set_pole('R', (3.2, 0.6, -1.6)); set_pole('L', (2.2, 2.2, -3.4))
     clavicle_follow('R', rp); clavicle_follow('L', lp)
-    place_palm('R', rp, face=-ex, along=axis * 0.5 + Vector((0, -0.6, 0.2)), wrist_amount=0.85)
-    place_palm('L', lp, face=-axis, along=Vector((-0.6, -0.5, 0.1)), wrist_amount=0.85)
-    grip('R', 0.75, 0.6); grip('L', 0.4, 0.35)
+    place_palm('R', rp, face=fw, along=(-fw * 0.25 + up_).normalized(), wrist_amount=0.9)
+    place_palm('L', lp, face=-fw, along=(up_ * 0.5 - out_ * 0.85).normalized(), iters=8, wrist_amount=1.0)
+    grip('R', 0.55, 0.45); grip('L', 0.62, 0.5)
 
 
 def L_reach(t, pr):
@@ -1528,17 +1560,17 @@ def L_dip(t, pr):
 
 # name: (pose, frames, fps, hold frame, props). Steps with a hold play once past the app's 3.2 s of acting,
 # then loop from `hold`; steps with hold 0 are cycles whose frame 0 is the still he waits on.
-LOOPS = {
-    'polish': (L_polish, 18, 10, 0, ('glass',)),
-    'stir': (L_stir, 14, 10, 0, ('thyrsus',)),
-    'pour': (L_pour, 28, 8.5, 21, ('bottle',)),
+LOOPS = {     # frame counts trimmed (R3 round 3) to pay for 1.8 px/unit: the timings are kept by lowering fps
+    'polish': (L_polish, 14, 8, 0, ('glass',)),
+    'stir': (L_stir, 12, 8.5, 0, ('thyrsus',)),
+    'pour': (L_pour, 24, 7.3, 18, ('bottle',)),
     'shake': (L_shake, 12, 12, 0, ('shaker',)),
-    'reach': (L_reach, 28, 8.5, 24, ('small',)),
-    'story': (L_story, 16, 8, 0, ()),
-    'dip': (L_dip, 28, 8.5, 22, ('thyrsus',)),
+    'reach': (L_reach, 21, 6.4, 18, ('small',)),
+    'story': (L_story, 14, 7, 0, ()),
+    'dip': (L_dip, 22, 6.7, 17, ('thyrsus',)),
 }
-RECT = tuple(float(v) for v in _arg('--rect', '560,290,1040,640').split(','))   # world rect of every frame (the counter clips him below ~630 in the app)
-K = float(_arg('--k', '1.2'))    # pixels per world unit
+RECT = tuple(float(v) for v in _arg('--rect', '530,272,1005,632').split(','))   # world rect of every frame (the counter clips him below ~630 in the app)
+K = float(_arg('--k', '1.8'))    # pixels per world unit (the recipe camera shows him at ~1.74 screen px per unit)
 SAMPLES = int(_arg('--samples', '16'))
 
 
@@ -1591,6 +1623,9 @@ def render_loop(name):
     frames = list(range(nf)) if not PREVIEW else [hold or nf // 2]
     if FRAMES_ARG: frames = [int(x) for x in FRAMES_ARG.split(',')]
     os.makedirs(os.path.join(OUT, name), exist_ok=True)
+    if not FRAMES_ARG and not PREVIEW:      # a full render replaces the loop (its frame count may have changed)
+        for f_ in os.listdir(os.path.join(OUT, name)):
+            if f_.endswith('.webp'): os.remove(os.path.join(OUT, name, f_))
     times = []
     for f in frames:
         png, dt = render_one(name, f, K * (1.3 if PREVIEW else 1), 'full', SAMPLES, pr, FINISH)
@@ -1669,7 +1704,7 @@ if __name__ == 'build_dionysus' or True:
             man['head'] = head_rect()
             man['about'] = ABOUT
             man['render'] = {'engine': 'Cycles (CPU, 4 threads)', 'samples': SAMPLES, 'adaptiveThreshold': 0.02,
-                             'denoiser': 'OpenImageDenoise', 'pxPerWorldUnit': K, 'webp': {'quality': QUALITY, 'alphaQuality': ALPHA_Q, 'method': 6}}
+                             'denoiser': 'OpenImageDenoise', 'pxPerWorldUnit': K, 'webp': webp_meta()}
             man.pop('finish', None)
             out = {k_: man[k_] for k_ in ('rect', 'head', 'about', 'render', 'loops', 'finishes') if k_ in man}
             json.dump(out, open(MAN_P, 'w'), indent=1)
