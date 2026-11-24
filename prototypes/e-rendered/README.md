@@ -20,12 +20,13 @@ Prototype B's layout, logic and zoom model, with the bar rendered in Blender (R1
 
 ```sh
 python3.13 -m venv .venv-blender && .venv-blender/bin/pip install bpy==5.3.0 pillow
-.venv-blender/bin/python prototypes/e-rendered/blender/build_bar.py           # everything, about 8 minutes on 4 CPU cores
+.venv-blender/bin/python prototypes/e-rendered/blender/build_bar.py           # everything, about 20 minutes on 4 CPU cores
 .venv-blender/bin/python prototypes/e-rendered/blender/build_bar.py --quick   # preview, about 30 seconds
 .venv-blender/bin/python prototypes/e-rendered/blender/build_bar.py --only bottles   # bg | touch | bottles
+.venv-blender/bin/python prototypes/e-rendered/blender/build_bar.py --preview menu   # menu | honey | dice | bottles: one item alone and in the bar, into blender/_work/preview/
 ```
 
-Cycles on the CPU (Eevee needs a GPU here), 64 samples with adaptive sampling and OpenImageDenoise, 4 bounces, Standard view transform so colours come out true.
+Cycles on the CPU (Eevee needs a GPU here), adaptive sampling and OpenImageDenoise, Standard view transform so colours come out true. Up to 10 bounces, 10 of them through glass, so the bottles and honey jar read as glass. Bottles render at 160 samples (about 4 minutes for all 26), the touchable items at 64 (10–47 s each), the backgrounds in about 14 minutes. A partial render (`--only`, `--preview`) keeps the other entries in `layers.js`.
 
 ## Dionysus loops (R4)
 

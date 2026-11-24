@@ -1,12 +1,22 @@
-:root{--step-size:36px;--text-scale:1;--page:#0f0e10;--cream:#f0e7d8;--ink:#f0e7d8;--glass:rgba(240,231,216,.16);--muted:#9b8e7e;--neon:#ff5c8a;--gold:#d8b25a;--green:#1f4a3a;
+@import url("https://fonts.googleapis.com/css2?family=Marcellus&family=Inter:wght@400;500;600&display=swap");
+/* Prototype E, Halo panels over the rendered bar. One dark look (Halo): warm charcoal panels, cream type, one gold accent,
+   Marcellus for names over Inter for reading. The bar stays Blender's; the panels are Halo's. */
+:root{--step-size:36px;--text-scale:1;--page:#0f0e10;--cream:#f0e7d8;
+ --bg:#1b191c;--ink:#f0e7d8;--mute:#9d9488;--faint:#332f34;--glass:rgba(240,231,216,.13);--acc:#e2ae5c;--ok:#7cc48a;--need:#e07060;
+ --panel:#1b191c;--line:rgba(240,231,216,.12);
+ --display:"Marcellus",Georgia,serif;--body:"Inter",system-ui,sans-serif;--e:cubic-bezier(.2,0,0,1);
  --skin:#e8d4bd;--shade:#b89a80;--veinop:.28;--red:#9e2a22;--red2:#7a1d18;--grn:#2f5a32;--grn2:#244726;--lip:#b7615a;--cheek:#d9907a;--cheekop:.35;--hair:#2b1b12;
- --f-sweet:#d9a441;--f-bal:#c9824a;--f-bit:#b3221c;--f-dec:#6b3a22;--f-str:#b8661c;--f-fre:#86c03a}
+ --f-sweet:#e0a224;--f-bal:#4fa59d;--f-bit:#d0453a;--f-dec:#b07a52;--f-str:#d46a28;--f-fre:#62ad5a;
+ color-scheme:dark}
 *{box-sizing:border-box}
-html,body{margin:0;height:100%;background:var(--page);color:var(--cream);font:16px/1.4 "DM Sans",system-ui,sans-serif;overflow:hidden;overscroll-behavior:none}
+html,body{margin:0;height:100%;background:var(--page);color:var(--ink);overflow:hidden;overscroll-behavior:none}
+body{font:16px/1.45 var(--body)}
 #stage{position:fixed;inset:0;overflow:hidden}
 #scene{position:absolute;inset:0;width:100%;height:100%;display:block;transition:filter .6s}
 #scene.dim{filter:brightness(.45) saturate(.7)}
-button{font:inherit;color:inherit;cursor:pointer}
+button{font:inherit;color:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent}
+:where(button,a,input,textarea,[tabindex]):focus-visible{outline:2px solid var(--acc);outline-offset:3px}
+svg.ghost{opacity:.3}
 
 /* Rendered layers: close-ups fade in over the whole-bar render */
 #scene image{image-rendering:auto}
@@ -15,21 +25,40 @@ button{font:inherit;color:inherit;cursor:pointer}
 .flick #bg-signOff{animation:flickoff 1.4s steps(1) forwards}
 @keyframes flickoff{0%{opacity:1}8%{opacity:0}12%{opacity:.9}20%{opacity:0}26%{opacity:.8}34%,100%{opacity:0}}
 
-/* Muted vs touchable (Q7): touchables are separate renders, so they keep true colour and can light up */
-.touch{cursor:pointer;outline:none}
-.touch image{transition:filter .25s}
-.touch:hover image,.touch:focus-visible image,.touch.lit image{filter:drop-shadow(0 0 6px rgba(255,214,150,.95)) brightness(1.16)}
-.touch.hinting image{animation:pulse 1.5s 3}
-@keyframes pulse{50%{filter:drop-shadow(0 0 8px rgba(255,214,150,1)) brightness(1.22)}}
-#dio:focus-visible{filter:drop-shadow(0 0 6px var(--cream))}
-#dice image{filter:drop-shadow(0 3px 2px rgba(0,0,0,.6))}
-.btl image{filter:drop-shadow(0 2px 2px rgba(0,0,0,.5))}
-.btl.dusty image{filter:saturate(.35) brightness(.6)}
+/* ---- Touchables in a dark bar (Q7: they keep true colour) ----
+   No whitening glow: a warm rim light hugs the edge, a soft pool of lamplight wakes on the counter beneath,
+   and a press lifts the thing a little, as if picked up. Focus gets a clear gold ring. */
+.touch{cursor:pointer;outline:none;-webkit-tap-highlight-color:transparent}
+.touch .lift{transform-box:fill-box;transform-origin:50% 100%;transition:transform .18s var(--e),filter .25s var(--e)}
+/* nothing traces the silhouette (it fringes the rendered glass like a sticker): a slight brightness lift, the lamplight pool beneath, the press lift */
+.touch:hover .lift,.touch:focus-visible .lift,.touch.lit .lift{filter:brightness(1.1)}
+.touch:active .lift,.touch.pressed .lift{transform:translateY(-3px) scale(1.025)}
+.touch .hit{fill:transparent;pointer-events:all}
+.touch .ring{fill:none;stroke:var(--acc);stroke-width:2px;vector-effect:non-scaling-stroke;display:none;pointer-events:none}
+.touch:focus-visible .ring{display:inline}
+.touch.hinting .lift{animation:pulse 1.5s 3}
+@keyframes pulse{50%{filter:brightness(1.16)}}
+.lpool{opacity:.3;mix-blend-mode:screen;transition:opacity .3s var(--e);pointer-events:none}
+#scene:has(#honey:is(:hover,:focus-visible,.lit,.hinting)) .lpool[data-for=honey],
+#scene:has(#menu:is(:hover,:focus-visible,.lit,.hinting)) .lpool[data-for=menu],
+#scene:has(#lamp:is(:hover,:focus-visible,.lit,.hinting)) .lpool[data-for=lamp],
+#scene:has(#panther:is(:hover,:focus-visible,.lit,.hinting)) .lpool[data-for=panther]{opacity:.9}
+/* Dionysus: rim only. He must stay sharp and unbleached (R10) */
+#dio{transition:filter .25s var(--e)}
+#dio:hover,#dio.lit{filter:brightness(1.05)}
+#dio .ring{stroke-width:3px}
+/* the shelf: the bottles lift as one when it is touched; each keeps its own shadow */
+#shelf .lift{transform-origin:50% 100%}
+#shelf:active .lift,#shelf.pressed .lift{transform:translateY(-2px)}
+.btl.dusty image{filter:saturate(.3) brightness(.5)}
+@keyframes bdrop{from{transform:translateY(-60px);opacity:0}to{transform:none;opacity:1}}
+#dice image{transform-box:fill-box;transform-origin:50% 50%}
+#panther:hover #dice image,#panther:focus-visible #dice image{animation:jig .5s var(--e)}
+@keyframes jig{30%{transform:translateY(-4px) rotate(-12deg)}60%{transform:rotate(5deg)}}
 #hints{position:absolute;inset:0;pointer-events:none;z-index:15}
-.hint{position:absolute;transform:translateX(-50%);background:var(--cream);color:#1c1410;font-weight:700;font-size:13px;border-radius:999px;padding:4px 10px;box-shadow:0 3px 0 #6b4c33;white-space:nowrap}
+.hint{position:absolute;transform:translateX(-50%);background:var(--bg);color:var(--acc);font:600 13px/1 var(--body);border-radius:999px;padding:7px 12px;box-shadow:0 0 0 1px rgba(226,174,92,.35),0 6px 18px rgba(0,0,0,.5);white-space:nowrap}
 
-
-/* Dionysus, by finish (Q8) */
+/* Dionysus, by finish (Q8): the drawn fallback figure */
 #dio .skin{fill:var(--skin)}
 #dio .veins{fill:url(#veins);opacity:var(--veinop);pointer-events:none}
 #dio .shade{stroke:var(--shade)}
@@ -40,7 +69,7 @@ button{font:inherit;color:inherit;cursor:pointer}
 #dio .himation{fill:var(--red)}
 #dio .himation-fold{stroke:var(--red2)}
 #dio .chiton{fill:var(--grn)}
-#dio .chiton-edge{stroke:var(--gold)}
+#dio .chiton-edge{stroke:#d8b25a}
 #dio .fawn{fill:#b98552}
 #dio .fawnspots{fill:#efe2c8}
 #dio .arm{fill:none;stroke:var(--skin);stroke-width:30;stroke-linecap:round;stroke-linejoin:round}
@@ -52,136 +81,416 @@ button{font:inherit;color:inherit;cursor:pointer}
 .fin-living{--skin:#c68b62;--shade:#93603f;--veinop:0;--lip:#8e4436;--cheekop:.3;--hair:#22150d}
 #dio #figleaf{transform-box:fill-box}
 
-/* HUD */
-.hud-btn{position:absolute;top:max(14px,env(safe-area-inset-top));z-index:30;border:0;background:rgba(15,14,16,.72);border-radius:999px;padding:10px 14px;color:var(--cream);box-shadow:0 0 0 1px #3a2c22 inset}
-#gear{right:16px;width:44px;height:44px;padding:0;display:grid;place-items:center}
-#back{left:16px;font-weight:700}
-.pill{position:absolute;z-index:20;border:0;border-radius:999px;padding:12px 18px;background:var(--cream);color:#1c1410;font-weight:700;box-shadow:0 6px 0 #6b4c33}
-#talkBtn{left:50%;bottom:max(20px,env(safe-area-inset-bottom));transform:translateX(-50%)}
+/* ---- HUD (Halo's round icon button and search pill) ---- */
+.hud-btn{position:absolute;top:max(14px,env(safe-area-inset-top));z-index:30;border:0;color:var(--ink)}
+#back{left:16px;width:48px;height:48px;padding:0;border-radius:50%;display:grid;place-items:center;background:rgba(27,25,28,.72);box-shadow:0 0 0 1px rgba(240,231,216,.12) inset;backdrop-filter:none}
+#back:hover{background:rgba(51,47,52,.9)}
+#gear{right:16px;width:44px;height:44px;padding:0;display:grid;place-items:center;border-radius:50%;background:rgba(27,25,28,.72)}
+.pill{position:absolute;z-index:20;border:0}
+#talkBtn{left:50%;bottom:max(20px,env(safe-area-inset-bottom));transform:translateX(-50%);display:flex;align-items:center;gap:14px;height:56px;min-width:340px;padding:0 10px 0 24px;border-radius:28px;
+ background:rgba(51,47,52,.92);color:var(--ink);box-shadow:0 0 0 1px rgba(240,231,216,.08) inset,0 14px 34px rgba(0,0,0,.55);font:500 17px var(--body);text-align:left}
+#talkBtn .tl{flex:none}
+#talkBtn .cyc{position:relative;flex:1;height:22px;overflow:hidden;-webkit-mask-image:linear-gradient(90deg,#000 85%,transparent);mask-image:linear-gradient(90deg,#000 85%,transparent);color:var(--mute);font-weight:400;font-size:15px}
+#talkBtn .cyc em{position:absolute;left:0;top:0;font-style:normal;white-space:nowrap;opacity:0;animation:cyc 15s infinite}
+@keyframes cyc{0%{opacity:0;transform:translateY(8px)}3%,17%{opacity:1;transform:none}20%,100%{opacity:0;transform:translateY(-8px)}}
+#talkBtn .mi{width:40px;height:40px;border-radius:50%;display:grid;place-items:center;color:var(--acc);margin-left:auto}
+#talkBtn:hover{background:rgba(61,56,62,.95)}
+#talkBtn:active{transform:translateX(-50%) translateY(1px)}
 
-/* Speech bubble: flat poster shape */
-.bubble{position:absolute;z-index:25;width:min(380px,calc(100vw - 32px));background:var(--cream);color:#1c1410;border-radius:22px;padding:16px 18px 14px;box-shadow:8px 8px 0 #6b4c33}
-.bubble::before{content:"";position:absolute;left:-16px;top:34px;border:12px solid transparent;border-right:18px solid var(--cream);border-left:0}
-.bubble.tail-down::before{left:50%;top:auto;bottom:-22px;border:12px solid transparent;border-top:14px solid var(--cream);border-bottom:0;transform:translateX(-50%)}
-.bubble p{margin:0 26px 10px 0;font-size:17px}
-.bubble .story{font-size:15px;line-height:1.5;margin-right:0}
-.bubble .who{display:block;padding-right:22px;font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:#7a5a40;margin:0 0 6px}
-.x{position:absolute;top:8px;right:10px;border:0;background:none;font-size:24px;color:#6b4c33;line-height:1}
-.chips{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px}
-.chip{border:2px solid #1c1410;background:transparent;border-radius:999px;padding:6px 12px;font-weight:500;font-size:14px;color:#1c1410}
-.chip.go{background:#1c1410;color:var(--cream)}
-.chip.skip{border-style:dashed;color:#7a5a40;border-color:#7a5a40}
-.chip.res{display:inline-flex;align-items:center;gap:6px;background:#fff8ec;min-height:44px}
-.chip.res small{color:#a3172a;font-size:11px}
-.chip{min-height:40px}
+/* ---- Speech bubble: a dark card beside his head ---- */
+.bubble{position:absolute;z-index:25;width:min(400px,calc(100vw - 32px));background:rgba(27,25,28,.95);color:var(--ink);border-radius:22px;padding:18px 20px 14px;
+ box-shadow:0 0 0 1px rgba(240,231,216,.10),0 18px 44px rgba(0,0,0,.55)}
+.bubble::before{content:"";position:absolute;left:-16px;top:34px;border:12px solid transparent;border-right:18px solid rgba(27,25,28,.95);border-left:0}
+.bubble p{margin:0 28px 12px 0;font-size:17px;line-height:1.4}
+.bubble.storyb{width:min(460px,calc(100vw - 32px))}
+.bubble .story{margin-right:0}
+.story .sname{display:block;font:400 26px/1.1 var(--display);color:var(--ink);margin:0 30px 10px 0}
+.story .sq{display:block;font:400 19px/1.45 var(--display)}
+.story .sm{display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:12px;color:var(--mute);font-size:14px}.story .sm b{color:var(--ink);font-weight:500}
+.story .lg{font-style:italic}
+.x{position:absolute;top:6px;right:6px;width:44px;height:44px;border:0;background:none;font-size:24px;color:var(--mute);line-height:1;border-radius:50%}
+.x:hover{color:var(--ink);background:var(--faint)}
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px}
+.chip{min-height:44px;border:1px solid rgba(240,231,216,.22);background:transparent;border-radius:999px;padding:8px 16px;font-weight:500;font-size:15px;color:var(--ink);transition:background .15s var(--e),border-color .15s}
+.chip:hover{background:var(--faint);border-color:rgba(240,231,216,.35)}
+.chip.go{background:var(--acc);border-color:var(--acc);color:var(--bg)}
+.chip.go:hover{background:#ecbd70}
+.chip.skip{border-style:dashed;color:var(--mute);border-color:rgba(157,148,136,.5)}
+.chip.res{display:flex;align-items:center;gap:10px;flex:1 1 170px;max-width:100%;border-radius:16px;padding:6px 12px 6px 8px;text-align:left;background:rgba(240,231,216,.04)}
+.chip.res .rt{display:flex;flex-direction:column;min-width:0;line-height:1.2}
+.chip.res b{font:400 18px/1.15 var(--display)}
+.chip.res small{font-size:12.5px;margin-top:2px}
+.ok{color:var(--ok)}.no{color:var(--acc)}
 .chipbreak{flex-basis:100%;height:0}
 .talk{display:flex;gap:6px;align-items:center}
-.talk input{flex:1;min-width:0;border:2px solid #1c1410;border-radius:999px;padding:9px 14px;font:inherit;background:#fffaf1;color:#1c1410}
-.mic,.send{border:0;border-radius:999px;height:40px;min-width:40px;display:grid;place-items:center;background:#1c1410;color:var(--cream);padding:0 12px;font-weight:700}
-.mic.on{background:var(--neon)}
+.talk input{flex:1;min-width:0;height:44px;border:0;border-radius:999px;padding:0 16px;font:inherit;font-size:15px;background:var(--faint);color:var(--ink)}
+.talk input::placeholder{color:var(--mute)}
+.mic,.send{border:0;border-radius:999px;height:44px;min-width:44px;display:grid;place-items:center;background:transparent;color:var(--acc);padding:0 12px;font-weight:600}
+.send{background:var(--acc);color:var(--bg);padding:0 16px}
+.mic.on{background:var(--acc);color:var(--bg)}
 
-/* Panels: menu, shelf reading, recipe */
-.panel{position:absolute;z-index:22;inset:auto;color:var(--cream)}
-.menucard{left:50%;top:50%;transform:translate(-50%,-50%);width:min(560px,calc(100vw - 32px));height:min(680px,calc(100vh - 96px));background:#1f4a3a;border-radius:10px;box-shadow:0 0 0 6px #173a2d,0 0 0 8px var(--gold);display:flex;flex-direction:column;padding:22px 22px 12px}
-.menucard h2{font:400 44px/1 "Bebas Neue",Impact,sans-serif;letter-spacing:6px;color:var(--gold);text-align:center;margin:0 0 12px}
-.tabs{display:flex;gap:6px;justify-content:center;margin-bottom:12px}
-.tab{border:2px solid var(--gold);background:transparent;color:var(--gold);border-radius:999px;padding:6px 14px;font-weight:700;font-size:14px}
-.tab[aria-selected=true]{background:var(--gold);color:#1f4a3a}
-.list{overflow:auto;flex:1;padding-right:4px;scrollbar-width:thin}
-.list h3{font:400 22px "Bebas Neue",Impact,sans-serif;letter-spacing:3px;color:var(--gold);margin:12px 0 4px;border-bottom:1px solid #2f6650}
-.drink{display:flex;align-items:center;gap:10px;width:100%;border:0;background:none;text-align:left;padding:6px 4px;border-radius:6px;color:var(--cream)}
-.drink:hover,.drink:focus-visible{background:#2a5e4a}
-.drink small{display:block;color:#b9cbbd;font-size:12px}
-.drink.need small{color:#f0b9a8}
-.menunote{text-align:center;margin:-6px 0 10px;color:#b9cbbd;font-size:13px}
-.drink.need{opacity:.62}
-.letters{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:2px 10px}
-
-.sheet{left:50%;top:50%;transform:translate(-50%,-50%);width:min(760px,calc(100vw - 32px));max-height:calc(100vh - 96px);overflow:auto;background:var(--cream);color:#1c1410;border-radius:22px;padding:22px;box-shadow:10px 10px 0 #6b4c33}
-.sheet h2{font:400 34px/1 "Bebas Neue",Impact,sans-serif;letter-spacing:3px;margin:0 0 6px}
-.photos{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:14px 0}
-.photo{border:3px solid transparent;border-radius:14px;padding:0;background:#1c1410;overflow:hidden;position:relative}
-.photo svg{display:block;width:100%;height:auto}
-.photo span{position:absolute;left:0;right:0;bottom:0;background:rgba(28,20,16,.85);color:var(--cream);font-size:13px;padding:4px 6px}
-.photo[aria-pressed=true]{border-color:var(--neon)}
-.photo[aria-pressed=true]::after{content:"✓";position:absolute;top:6px;right:8px;background:var(--neon);color:#fff;border-radius:50%;width:24px;height:24px;display:grid;place-items:center;font-weight:700}
-.reading{display:flex;align-items:center;gap:12px;font-size:18px;margin:18px 0}
-.reading i{width:22px;height:22px;border:3px solid #c9b79c;border-top-color:#1c1410;border-radius:50%;animation:spin .8s linear infinite}
-@keyframes spin{to{transform:rotate(360deg)}}
-.found{columns:3 160px;margin:8px 0 14px;padding:0;list-style:none;font-size:14px}
-.found li{break-inside:avoid;padding:2px 0}
-.found b{font-weight:700;display:block;margin-top:6px;text-transform:uppercase;font-size:11px;letter-spacing:.08em;color:#7a5a40}
-.ticks{display:flex;flex-wrap:wrap;gap:8px 16px;margin:6px 0 14px}
-.ticks label{display:flex;gap:6px;align-items:center}
+/* ---- Panels ---- */
+.panel{position:absolute;z-index:22;inset:auto;color:var(--ink)}
+.fbs{display:flex;gap:4px;justify-content:center;flex-wrap:wrap}
+.fb{min-height:44px;padding:8px 16px;border:0;border-radius:22px;background:transparent;font-size:15px;color:var(--mute)}
+.fb:hover{color:var(--ink)}
+.fb[aria-selected=true],.fb.on{background:var(--faint);color:var(--ink)}
+.btn{min-height:48px;border:0;border-radius:999px;padding:10px 22px;font-weight:500;font-size:16px;background:var(--acc);color:var(--bg)}
+.btn:hover{background:#ecbd70}
+.btn.ghost{background:transparent;color:var(--ink);box-shadow:0 0 0 1px rgba(240,231,216,.25) inset}
+.btn.ghost:hover{background:var(--faint)}
+.btn.small{min-height:40px;padding:6px 14px;font-size:14px}
+.btn:disabled{cursor:default}
+/* disabled stays readable (WCAG AA): muted text and a fainter outline, not a faded button */
+.btn.ghost:disabled{background:transparent;color:var(--mute);box-shadow:0 0 0 1px rgba(240,231,216,.12) inset}
+.btn:not(.ghost):disabled{background:transparent;color:var(--mute);box-shadow:0 0 0 1px rgba(240,231,216,.12) inset}
 .row{display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap}
-.btn{border:0;border-radius:999px;padding:10px 18px;font-weight:700;background:#1c1410;color:var(--cream)}
-.btn.ghost{background:transparent;color:#1c1410;box-shadow:0 0 0 2px #1c1410 inset}
-.btn.small{padding:6px 12px;font-size:13px}
-.paste{font-size:14px;margin:0 0 12px}.paste a{color:#a3172a;font-weight:700}
-.howto{margin:6px 0 10px;padding-left:20px;font-size:14px}
-.prompt{background:#1c1410;color:var(--cream);border-radius:12px;padding:10px;margin-bottom:10px}
-.prompt pre{margin:0 0 8px;white-space:pre-wrap;font:12px/1.4 ui-monospace,monospace;max-height:120px;overflow:auto}
-.prompt .btn{background:var(--cream);color:#1c1410}
-#pasteIn{width:100%;border:2px solid #1c1410;border-radius:12px;padding:8px;font:13px ui-monospace,monospace;background:#fffaf1;color:#1c1410}
-.pasteNote{font-size:13px;color:#a3172a;margin:4px 0 8px}
-.settings .note{font-size:12px;color:#7a5a40;margin:10px 0 0}
 
-.recipe{left:max(20px,3vw);top:74px;bottom:20px;width:min(470px,46vw);display:flex;flex-direction:column;background:var(--cream);color:#1c1410;border-radius:22px;padding:18px 22px 14px;box-shadow:10px 10px 0 #6b4c33}
-.recipe .kicker{margin:0 0 2px;font-size:13px;color:#7a5a40}
-.recipe h2{font:400 46px/0.95 "Bebas Neue",Impact,sans-serif;letter-spacing:2px;margin:0}
-.recipe .meta{color:#7a5a40;font-size:13px;margin:4px 0 8px}
-.recipe .worth{margin:0 0 8px;background:#f6dccf;border-radius:10px;padding:6px 10px;font-size:14px}
-.recipe .golden{margin:0 0 8px;background:linear-gradient(90deg,#f3dc8c,#fff3c4);border-radius:10px;padding:6px 10px;font-size:14px}
-.recipe .ing{list-style:none;padding:0;margin:0 0 6px;columns:2;column-gap:18px}
-.recipe .ing li{display:flex;justify-content:space-between;gap:8px;padding:3px 0;border-bottom:1px dashed #cdbca2;font-size:14px;break-inside:avoid}
-.recipe .ing li.miss{color:#a3172a}
-.swap{background:#fff2d6;border-radius:10px;padding:6px 10px;font-size:13px;margin:4px 0}
-/* R6, R11: one step at a time, big enough to read from a metre; the size is one variable */
-.stepbox{flex:1;min-height:0;overflow:auto;margin-top:8px;border-radius:14px;padding:10px 4px 6px;cursor:pointer}
-.stepbox .stepno{margin:0;font-size:13px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#7a5a40}
-.stepbox .step{margin:4px 0 8px;font-size:var(--step-size);line-height:1.15;font-weight:700}
-.stepbox .act{margin:0;font-size:14px;color:#7a5a40}
-.stepbox.waiting .act{color:#a3172a;font-weight:700}
-.recipe .row{padding-top:10px}
-.recipe .btn{min-height:48px;padding:12px 20px}
-.btn:disabled{opacity:.35;cursor:default}
+/* Menu: the card he zoomed into, with Halo's strips and ring */
+.menucard{left:50%;top:50%;transform:translate(-50%,-50%);width:min(600px,calc(100vw - 32px));height:min(700px,calc(100vh - 88px));background:var(--panel);border-radius:22px;
+ box-shadow:0 0 0 1px rgba(226,174,92,.35),0 30px 70px rgba(0,0,0,.6);display:flex;flex-direction:column;padding:22px 0 0;overflow:hidden}
+.menucard h2{font:400 36px/1 var(--display);letter-spacing:.28em;text-indent:.28em;color:var(--acc);text-align:center;margin:0 0 6px}
+.menunote{text-align:center;margin:0 0 10px;color:var(--mute);font-size:14px;font-variant-numeric:tabular-nums}
+.menucard .fbs{margin-bottom:6px;padding:0 16px}
+.mbody{position:relative;flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;scrollbar-width:thin;scrollbar-color:var(--faint) transparent;padding-bottom:12px}
+.msec h3{display:flex;align-items:center;gap:12px;margin:10px 24px 0;font:400 26px/1.2 var(--display);color:var(--ink)}
+.msec h3 em{font:400 15px var(--body);color:var(--mute);font-style:normal;font-variant-numeric:tabular-nums}
+.strip{position:relative;height:206px;touch-action:pan-y;overflow:hidden;cursor:grab}
+.strip .track{position:absolute;inset:0}
+.strip .track>*{position:absolute;left:0;top:0;will-change:transform}
+.dc{display:flex;flex-direction:column;align-items:center;gap:5px;padding:10px 2px 6px;border:0;background:none;border-radius:16px;color:var(--ink);text-align:center}
+.dc .pic{height:96px;display:flex;align-items:flex-end}
+.dc .nm{font:400 19px/1.12 var(--display);text-wrap:balance}
+.dc .meta{display:flex;align-items:center;gap:5px;font-size:12.5px;color:var(--mute);white-space:nowrap}
+.dc .needs{font-size:13px;color:var(--acc);line-height:1.2}
+.dc:hover,.dc:focus-visible{background:rgba(240,231,216,.05)}
+.dc.need .nm{color:#cfc6b8}
+/* A–Z: the ring of letters, swelling under the finger */
+.az{position:relative;height:100%;min-height:420px;touch-action:none;cursor:pointer;overflow:hidden;outline:none}
+.az .lt{position:absolute;left:0;top:0;width:48px;height:48px;display:grid;place-items:center;font:400 24px var(--display);color:var(--ink);transition:transform .09s linear,color .1s;will-change:transform;pointer-events:none}
+.az .lt.none{color:#4b4549}.az .lt.hot{color:var(--acc)}
+.az .ic{position:absolute;left:0;top:0;width:104px;display:flex;flex-direction:column;align-items:center;gap:2px;border:0;background:none;padding:0;color:var(--ink);font:400 15px/1.1 var(--display);text-align:center;opacity:.4;transition:transform .12s var(--e),opacity .2s;will-change:transform}
+.az .ic small{font:500 11.5px/1.15 var(--body);color:var(--acc)}
+.az .ic.live{opacity:1;animation:pop .45s var(--e) both}
+@keyframes pop{from{opacity:0;translate:var(--dx) var(--dy);scale:.2}}
+.az .azc{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);text-align:center;color:var(--mute);font-size:14px;pointer-events:none;width:150px}
 
-/* Settings */
-.settings{position:absolute;z-index:40;top:68px;right:16px;width:min(330px,calc(100vw - 32px));background:var(--cream);color:#1c1410;border-radius:18px;padding:16px 18px;box-shadow:8px 8px 0 #6b4c33}
-.settings h3{margin:0 0 6px;font:400 24px "Bebas Neue",Impact,sans-serif;letter-spacing:2px}
-.settings fieldset{border:0;padding:0;margin:0 0 12px}
-.settings legend{font-weight:700;font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:#7a5a40;margin-bottom:4px}
-.seg{display:flex;flex-wrap:wrap;gap:6px}
-.seg label{border:2px solid #1c1410;border-radius:999px;padding:5px 11px;font-size:14px;cursor:pointer}
+/* Sheets: onboarding, paste, your bar */
+.sheet{left:50%;top:50%;transform:translate(-50%,-50%);width:min(760px,calc(100vw - 32px));max-height:calc(100vh - 96px);overflow:auto;scrollbar-width:thin;scrollbar-color:var(--faint) transparent;
+ background:rgba(27,25,28,.97);color:var(--ink);border-radius:22px;padding:24px 26px 20px;box-shadow:0 0 0 1px rgba(240,231,216,.08),0 30px 70px rgba(0,0,0,.6);font-size:15px}
+.sheet h2{font:400 32px/1.1 var(--display);margin:0 0 8px}
+.sheet p{margin:0 0 10px;color:#d8cfc2}
+.photos{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:14px 0}
+.photo{border:0;border-radius:14px;padding:0;background:#121013;overflow:hidden;position:relative;box-shadow:0 0 0 1px var(--line)}
+.photo svg{display:block;width:100%;height:auto;opacity:.55;transition:opacity .2s}
+.photo span{position:absolute;left:0;right:0;bottom:0;background:rgba(18,16,19,.85);color:var(--ink);font-size:13px;padding:6px 8px;text-align:left}
+.photo[aria-pressed=true]{box-shadow:0 0 0 2px var(--acc)}
+.photo[aria-pressed=true] svg{opacity:1}
+.photo[aria-pressed=true]::after{content:"✓";position:absolute;top:6px;right:8px;background:var(--acc);color:var(--bg);border-radius:50%;width:24px;height:24px;display:grid;place-items:center;font-weight:600}
+.reading{display:flex;align-items:center;gap:12px;font-size:18px;margin:18px 0}
+.reading i{width:22px;height:22px;border:3px solid var(--faint);border-top-color:var(--acc);border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.found{columns:3 180px;column-gap:24px;margin:8px 0 14px;padding:0;list-style:none;font-size:14px}
+.found li{break-inside:avoid;padding:2px 0 8px}
+.found b{display:block;margin:4px 0 6px;font:500 12px var(--body);letter-spacing:.06em;text-transform:uppercase;color:var(--mute)}
+.found .fi{display:flex;align-items:center;gap:8px;min-height:26px}
+.found .fi svg{flex:none}
+.sheet .lbl{margin:4px 0 6px;font:500 12px var(--body);letter-spacing:.06em;text-transform:uppercase;color:var(--mute)}
+.ticks{display:flex;flex-wrap:wrap;gap:8px;margin:6px 0 16px}
+.ticks label{display:flex;gap:8px;align-items:center;min-height:44px;padding:8px 16px;border-radius:22px;color:var(--mute);box-shadow:0 0 0 1px rgba(240,231,216,.18) inset;cursor:pointer}
+.ticks label:has(input:checked){background:var(--faint);color:var(--ink);box-shadow:0 0 0 1px rgba(226,174,92,.45) inset}
+.ticks input{accent-color:var(--acc);width:16px;height:16px;margin:0}
+.paste{font-size:14px}.paste a,.sheet a{color:var(--acc);font-weight:500}
+.howto{margin:6px 0 12px;padding-left:20px;font-size:14px;color:#d8cfc2}
+.prompt{background:#121013;color:var(--ink);border-radius:14px;padding:12px;margin-bottom:12px;box-shadow:0 0 0 1px var(--line)}
+.prompt pre{margin:0 0 10px;white-space:pre-wrap;font:12px/1.45 ui-monospace,monospace;max-height:120px;overflow:auto;color:#cfc6b8}
+#pasteIn{width:100%;border:0;border-radius:14px;padding:10px 12px;font:13px ui-monospace,monospace;background:var(--faint);color:var(--ink)}
+#pasteIn::placeholder{color:var(--mute)}
+.pasteNote{font-size:13px;color:var(--acc)!important;margin:6px 0 8px}
+
+/* Your bar (the shelf sheet) and One bottle away */
+.barsheet{padding-top:18px}
+.barsheet .bhead{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:6px}
+.barsheet .bhead h2{margin:0}
+.barsheet .bhead .fbs{margin-left:auto}
+.barsheet .sub{color:var(--mute);font-size:14px;margin:0 0 8px}
+.bfams{display:flex;flex-wrap:wrap;gap:6px 22px}
+.bfam h3{margin:8px 0 2px;font:500 12px var(--body);letter-spacing:.06em;text-transform:uppercase;color:var(--mute)}
+.ig{display:flex;flex-wrap:wrap;gap:2px}
+.it{width:92px;min-height:88px;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;gap:4px;padding:6px 2px;border:0;background:none;border-radius:14px;font-size:12.5px;line-height:1.15;text-align:center;color:var(--ink)}
+.it:hover{background:rgba(240,231,216,.05)}
+.it.off span{color:#6d666b}
+.it small{font-size:11px;color:var(--acc);margin-top:-1px}
+.tools{display:flex;flex-wrap:wrap;gap:8px;margin:2px 0 14px}
+.tool{min-height:44px;padding:8px 16px;border:0;border-radius:22px;background:var(--faint);color:var(--ink);font-size:14px;box-shadow:0 0 0 1px rgba(226,174,92,.35) inset}
+.tool[aria-pressed=false]{background:transparent;color:#6d666b;box-shadow:0 0 0 1px rgba(240,231,216,.14) inset;text-decoration:line-through}
+.away .ar{display:grid;grid-template-columns:200px 1fr;align-items:center;gap:14px;min-height:112px;border-top:1px solid var(--line)}
+.away .ar:first-child{border-top:0}
+.away .ak{display:grid;grid-template-columns:52px 1fr;grid-template-rows:auto auto;column-gap:10px;align-items:center}
+.away .ak svg{grid-row:span 2;justify-self:center}.away .ak .nm{font:400 21px/1.15 var(--display)}.away .ak .un{color:var(--acc);font-size:15px}
+.away .ad{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;padding:4px 0}
+.away .mini{display:flex;flex-direction:column;align-items:center;gap:4px;min-width:88px;max-width:96px;padding:6px 4px;border:0;background:none;border-radius:14px;font:400 14px/1.15 var(--display);text-align:center;color:var(--ink)}
+.away .mini:hover{background:rgba(240,231,216,.05)}
+.away .none{color:var(--mute);padding:14px 0}
+.settings .note{font-size:12px;color:var(--mute);margin:10px 0 0}
+.settings .note a{color:var(--acc)}
+
+/* ---- Recipe: Halo's grid on a dark card; he stands sharp beside it (R10) ---- */
+.recipe{left:max(20px,3vw);top:72px;bottom:14px;width:min(480px,46vw);display:flex;flex-direction:column;background:var(--panel);color:var(--ink);border-radius:22px;padding:18px 22px 14px;
+ box-shadow:0 0 0 1px rgba(240,231,216,.08),0 24px 60px rgba(0,0,0,.6)}
+/* default size: the step box keeps a floor and the ingredients take the rest, so every row shows; at A+ the ingredients are capped */
+.recipe .rtop{flex:0 1 auto;min-height:72px;overflow:auto;scrollbar-width:thin;scrollbar-color:var(--faint) transparent;margin:0 -6px;padding:0 6px}
+.recipe .kicker{display:flex;align-items:center;gap:8px;margin:0 56px 6px 0;font-size:13.5px;color:var(--acc)}
+.recipe .kicker b{font-weight:500;color:var(--ink)}
+.recipe .head{display:grid;grid-template-columns:64px 1fr;column-gap:14px;align-items:end;margin:0 52px 8px 0}
+.recipe .head .rg{display:flex;justify-content:center;align-items:flex-end}
+.recipe h2{font:400 38px/1.02 var(--display);letter-spacing:.01em;margin:0 0 6px}
+.recipe .rm{display:flex;flex-wrap:wrap;gap:4px 14px;color:var(--mute);font-size:calc(13.5px * min(var(--text-scale), 1.15))}.recipe .rm span{display:flex;align-items:center;gap:6px}
+.again{position:absolute;top:10px;right:10px;width:56px;height:56px;border:0;background:none;border-radius:16px;display:grid;place-items:center}
+.again:hover{background:rgba(240,231,216,.05)}
+.recipe .worth{margin:0 0 6px;background:rgba(226,174,92,.12);color:var(--ink);border-radius:12px;padding:8px 12px;font-size:14px}
+.recipe .golden{margin:0 0 6px;background:linear-gradient(90deg,rgba(232,196,90,.25),rgba(255,243,196,.06));color:var(--ink);border-radius:12px;padding:8px 12px;font-size:14px}
+.recipe .ing{--s:var(--text-scale);display:grid;grid-template-columns:28px calc(52px * var(--s)) calc(40px * var(--s)) 1fr auto;column-gap:10px;row-gap:1px;align-items:center;margin:0 0 6px}
+.recipe .ir{display:contents}
+.recipe .ii{display:grid;place-items:center;height:27px}
+.recipe .iq{text-align:right;font-size:calc(18px * var(--s));font-variant-numeric:tabular-nums}
+.recipe .iu{font-size:calc(13px * var(--s));color:var(--mute)}
+.recipe .in{font-size:calc(17px * var(--s));line-height:1.2}
+.recipe .ix{font-size:calc(13px * var(--s));text-align:right;white-space:nowrap}
+.recipe .ir.miss .iq,.recipe .ir.miss .in{color:var(--mute)}
+.recipe .sub{color:var(--acc)}.recipe .opt{color:var(--mute)}.recipe .needx{color:var(--need)}
+.toolswap{border:1px solid rgba(226,174,92,.35);background:transparent;color:#d8cfc2;border-radius:12px;padding:7px 12px;font-size:calc(13.5px * var(--text-scale));margin:0 0 4px}
+.toolswap b{color:var(--ink);font-weight:500}
+/* R6, R11: one step at a time, big enough to read from a metre; the size is one variable. The glyph shows the hand's movement. */
+.stepbox{flex:1 1 0;min-height:180px;overflow:auto;margin-top:6px;border-top:1px solid var(--line);padding:12px 2px 6px;cursor:pointer;display:grid;grid-template-columns:1fr auto;column-gap:14px;align-items:start;scrollbar-width:thin;scrollbar-color:var(--faint) transparent}
+.stepbox .stxt{min-width:0}
+.stepbox .stepno{margin:0;font:600 12px var(--body);letter-spacing:.08em;text-transform:uppercase;color:var(--mute)}
+.stepbox .stepno i{font-style:normal;color:var(--acc)}
+.stepbox .step{margin:4px 0 8px;font-family:var(--body);font-size:var(--step-size);line-height:1.15;font-weight:600;color:var(--ink)}
+.stepbox .sact{margin:0;font-size:14px;color:var(--mute)}
+.stepbox.waiting .sact{color:var(--acc);font-weight:500}
+.stepbox .glyph{display:flex;flex-direction:column;align-items:center;gap:4px;padding-top:4px}
+.stepbox .glyph .act{width:112px;height:112px;overflow:visible}
+.stepbox .sec{display:flex;align-items:center;gap:6px;color:var(--mute);font-size:13px}
+.stepbox .done{grid-column:1/-1}
+.thumbs{flex:none;display:flex;gap:6px;padding:8px 0 2px;overflow-x:auto;scrollbar-width:none}
+.thumbs .th{flex:none;width:44px;height:44px;border:0;padding:2px;border-radius:12px;background:transparent;opacity:.35;display:grid;place-items:center}
+.thumbs .th .act{width:38px;height:38px}
+.thumbs .th .act *{animation:none!important}
+.thumbs .th.done{opacity:1}
+.thumbs .th.cur{opacity:1;box-shadow:0 0 0 2px var(--acc) inset;background:rgba(226,174,92,.08)}
+.recipe .row{padding-top:8px}
+/* Halo's dice */
+.pair{display:flex;gap:calc(var(--ds)*.32);perspective:600px;padding:4px}
+.die{position:relative;width:var(--ds);height:var(--ds);transform-style:preserve-3d;transform:rotateX(-22deg) rotateY(32deg)}
+.d2{transform:rotateX(-14deg) rotateY(-40deg) rotateZ(8deg)}
+.face{position:absolute;inset:0;border-radius:calc(var(--ds)*.2);background:#f3ebde;box-shadow:inset 0 0 calc(var(--ds)*.14) rgba(0,0,0,.18);display:grid;grid-template:repeat(3,1fr)/repeat(3,1fr);padding:calc(var(--ds)*.14);backface-visibility:hidden}
+.face i{width:calc(var(--ds)*.17);height:calc(var(--ds)*.17);border-radius:50%;align-self:center;justify-self:center}
+.face i.on{background:#7a2230}
+.f1{transform:translateZ(calc(var(--ds)/2))}.f6{transform:rotateY(180deg) translateZ(calc(var(--ds)/2))}
+.f2{transform:rotateY(90deg) translateZ(calc(var(--ds)/2))}.f5{transform:rotateY(-90deg) translateZ(calc(var(--ds)/2))}
+.f3{transform:rotateX(90deg) translateZ(calc(var(--ds)/2))}.f4{transform:rotateX(-90deg) translateZ(calc(var(--ds)/2))}
+.dice:hover:not(.rolling) .d1{animation:djig .5s var(--e)}.dice:hover:not(.rolling) .d2{animation:djig2 .5s var(--e)}
+@keyframes djig{30%{transform:rotateX(-34deg) rotateY(18deg) translateY(-6px)}60%{transform:rotateX(-14deg) rotateY(40deg)}}
+@keyframes djig2{30%{transform:rotateX(-4deg) rotateY(-26deg) rotateZ(14deg) translateY(-8px)}60%{transform:rotateX(-20deg) rotateY(-48deg) rotateZ(4deg)}}
+.dice.rolling .pair{animation:hop 1.05s var(--e)}
+@keyframes hop{0%{transform:none}25%{transform:translate(-8px,-18px)}55%{transform:translate(4px,0)}70%{transform:translate(6px,-6px)}85%,100%{transform:none}}
+
+/* Settings (from the brass lamp, R11) */
+.settings{position:absolute;z-index:40;top:68px;right:16px;width:min(350px,calc(100vw - 32px));max-height:calc(100vh - 84px);overflow:auto;background:rgba(27,25,28,.97);color:var(--ink);border-radius:20px;padding:18px 20px;
+ box-shadow:0 0 0 1px rgba(240,231,216,.08),0 30px 70px rgba(0,0,0,.6)}
+.settings h3{margin:0 0 8px;font:400 22px var(--display)}
+.settings fieldset{border:0;padding:0;margin:0 0 14px}
+.settings legend{font:500 12px var(--body);text-transform:uppercase;letter-spacing:.06em;color:var(--mute);margin-bottom:6px}
+.seg{display:flex;flex-wrap:wrap;gap:4px}
+.seg label{display:flex;align-items:center;min-height:44px;border-radius:22px;padding:8px 14px;font-size:14px;cursor:pointer;color:var(--mute);box-shadow:0 0 0 1px rgba(240,231,216,.16) inset}
 .seg input{position:absolute;opacity:0;pointer-events:none}
-.seg label:has(input:checked){background:#1c1410;color:var(--cream)}
+.seg label:has(input:checked){background:var(--ink);color:var(--bg);box-shadow:none}
+.seg label:has(input:focus-visible){outline:2px solid var(--acc);outline-offset:2px}
 .seg label:has(input:disabled){opacity:.4;cursor:not-allowed}
-.adult{display:flex;gap:8px;align-items:flex-start;font-size:13px;background:#f6dccf;border-radius:10px;padding:8px}
-.badge{display:inline-block;background:#a3172a;color:#fff;border-radius:4px;font-size:10px;font-weight:700;padding:1px 5px;margin-left:4px;vertical-align:1px}
+.adult{display:flex;gap:10px;align-items:flex-start;font-size:13px;background:rgba(208,69,58,.12);border-radius:12px;padding:10px;color:#d8cfc2}
+.adult input{accent-color:var(--acc);margin-top:2px}
+.badge{display:inline-block;background:#a3172a;color:#fff;border-radius:4px;font-size:10px;font-weight:600;padding:1px 5px;margin-left:6px;vertical-align:1px}
+.sizer{display:flex;align-items:center;gap:10px}
+.sizer .btn{flex:none;width:48px;height:48px;min-height:48px;padding:0;border-radius:50%;font-weight:600}
+.sizeprev{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;line-height:1}.sizeprev b{font:600 1em var(--body)}.sizeprev small{font-size:12px;color:var(--mute);margin-top:6px}
+#lamp{cursor:pointer}
 
 [hidden]{display:none!important}
 
-/* Phone: cropped, taller view */
+/* ---- Phone: cropped, taller view ---- */
 @media (max-width:640px){
- .bubble{left:16px!important;right:16px;width:auto!important;top:auto!important;bottom:max(16px,env(safe-area-inset-bottom))}
- .bubble::before{left:50%;top:-20px;border:12px solid transparent;border-bottom:14px solid var(--cream);border-top:0;transform:translateX(-50%)}
- .recipe{left:10px;right:10px;width:auto;top:auto;bottom:10px;height:60vh;padding:14px 16px 10px}
- .recipe h2{font-size:36px}
- .recipe .ing{columns:2;font-size:13px}
- .recipe .ing li{font-size:12.5px;padding:2px 0}
- .recipe .meta{margin-bottom:4px}
- .recipe .btn{padding:10px 14px}
- .chip.res{min-height:40px}
- .menucard{height:calc(100vh - 90px);top:calc(50% + 24px)}
+ .bubble{left:12px!important;right:12px;width:auto!important;top:auto!important;bottom:max(12px,env(safe-area-inset-bottom));max-height:62vh;overflow:auto}
+ .bubble.storyb{width:auto!important}
+ .bubble::before{display:none}
+ .story .sq{font-size:17px}
+ #talkBtn{min-width:0;width:calc(100vw - 32px);bottom:max(28px,env(safe-area-inset-bottom))}
+ .recipe{left:8px;right:8px;width:auto;top:auto;bottom:8px;height:60vh;padding:14px 16px 10px}
+ .recipe .head{grid-template-columns:1fr;margin-bottom:6px}
+ .recipe .head .rg{display:none}
+ .recipe h2{font-size:30px;margin-bottom:4px}
+ .recipe .rm{font-size:calc(12.5px * min(var(--text-scale), 1.15));gap:2px 10px}
+ .recipe .ing{grid-template-columns:22px calc(40px * var(--s)) calc(32px * var(--s)) 1fr auto;column-gap:7px;row-gap:0;margin-bottom:6px}
+ .recipe .ii{height:24px}.recipe .ii svg{max-height:20px;width:auto}
+ .recipe .iq{font-size:calc(14px * var(--s))}.recipe .in{font-size:calc(13.5px * var(--s))}.recipe .iu,.recipe .ix{font-size:calc(12px * var(--s))}
+ .toolswap{font-size:calc(12.5px * var(--text-scale));padding:5px 10px}
+ .recipe .worth,.recipe .golden{font-size:13px;padding:6px 10px}
+ .stepbox{grid-template-columns:1fr auto;column-gap:10px;padding-top:8px}
+ .stepbox .glyph .act{width:72px;height:72px}
+ .thumbs{gap:2px}.thumbs .th{width:44px;height:44px;border-radius:12px}.thumbs .th .act{width:32px;height:32px}
+ .kicker .dice{display:none}
+ .recipe .btn{padding:10px 16px}
+ .again{width:52px;height:44px;top:8px;right:6px}.again .dice{--ds:15px!important}
+ .stepbox{min-height:140px}
+ .recipe .rtop{-webkit-mask-image:linear-gradient(#000 calc(100% - 16px),transparent);mask-image:linear-gradient(#000 calc(100% - 16px),transparent);padding-bottom:10px}
+ .menucard{width:calc(100vw - 16px);height:calc(100dvh - 84px);top:calc(50% + 30px)}
+ .menucard h2{font-size:30px}
+ .strip{height:212px}
+ .dc .pic{height:84px}
+ .az .lt{width:40px;height:40px;font-size:20px}
+ .az .ic{width:86px;font-size:13px}
  .photos{grid-template-columns:repeat(2,1fr)}
- .sheet{top:auto;bottom:12px;transform:translateX(-50%);max-height:calc(100vh - 80px)}
+ .sheet{top:auto;bottom:8px;transform:translateX(-50%);width:calc(100vw - 16px);max-height:calc(100dvh - 80px);padding:18px 16px 14px}
+ .sheet h2{font-size:26px}
+ .barsheet .bhead .fbs{margin-left:0}
+ .it{width:80px;min-height:80px}
+ .away .ar{grid-template-columns:1fr;gap:4px;padding:8px 0}
+ .settings{top:auto;bottom:8px;right:8px;left:8px;width:auto}
 }
-@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+/* at the largest text the glyph moves above the words on a phone */
+@media (max-width:640px){ :root[data-big] .stepbox{grid-template-columns:1fr} }
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}.touch:active .lift,.touch.pressed .lift{transform:none}#talkBtn .cyc em:first-child{opacity:1}}
 /* the shelf sheet sits below the shelf it describes */
-.sheet.shelfsheet{top:auto;bottom:18px;transform:translateX(-50%);max-height:44vh}
+.sheet.shelfsheet{top:auto;bottom:16px;transform:translateX(-50%);max-height:48vh}
+@media (max-width:640px){ .sheet.shelfsheet{max-height:56dvh;bottom:8px} }
 
 /* Text size setting: the step uses --step-size; reading panels scale with --text-scale */
-.bubble,.recipe .ing,.recipe .meta,.recipe .swap,.panel .drink,.menunote{zoom:var(--text-scale)}
-.sizer{display:flex;align-items:center;gap:10px}
-.sizeprev{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;line-height:1}.sizeprev b{font-weight:700}.sizeprev small{font-size:12px;color:#7a5a40;margin-top:4px}.sizer .btn{flex:none}
-#lamp{cursor:pointer}
+.menunote,.barsheet .bfams{zoom:var(--text-scale)}
+.bubble p{font-size:calc(17px * var(--text-scale))}
+.chip{font-size:calc(15px * min(var(--text-scale), 1.3))}
+.chip.res b{font-size:calc(18px * min(var(--text-scale), 1.3))}
+.story .sq{font-size:calc(19px * var(--text-scale))}
+.talk input{font-size:calc(15px * min(var(--text-scale), 1.3))}
+/* phone at large text: the talk field gets its own row, mic and Ask below it */
+@media (max-width:640px){ :root[data-big] .talk{flex-wrap:wrap} :root[data-big] .talk input{flex:1 1 100%} :root[data-big] .talk .mic{margin-left:auto} :root[data-big] .story .sq{font-size:calc(17px * var(--text-scale))} }
+/* press: panel buttons give a little under the finger, like the touchables on the counter */
+:is(.btn,.chip,.it,.mini,.fb,.tool,.th,.again,.x,.photo,#back):active{transform:translateY(1px) scale(.98)}
+:is(.btn,.chip,.it,.mini,.fb,.tool,.th,.again,.x,.photo,#back){transition:transform .12s var(--e),background .15s var(--e)}
+@media (prefers-reduced-motion:reduce){:is(.btn,.chip,.it,.mini,.fb,.tool,.th,.again,.x,.photo,#back):active{transform:none}}
+
+/* ---- Halo's step glyphs (index.html, copied; its 'drop' keyframes renamed 'adrop' so the shelf's bottle drop keeps its own) ---- */
+.act *{transform-box:view-box}
+/* jigger pours: bottle tips into the jigger held over the tin, then a wrist flick turns the jigger over its waist */
+.p2-bottle,.p2-stream1,.p2-jfill,.p2-jig,.p2-stream2,.p2-tin{animation-duration:3.6s;animation-iteration-count:infinite}
+.p2-bottle{animation-name:p2b;animation-timing-function:var(--e)}
+@keyframes p2b{0%,6%{transform:none}18%,40%{transform:rotate(68deg)}50%,100%{transform:none}}
+.p2-stream1{opacity:0;animation-name:p2s1;animation-timing-function:linear}
+@keyframes p2s1{0%,18%{opacity:0}20%,39%{opacity:1}41%,100%{opacity:0}}
+.p2-jfill{transform-box:fill-box;transform-origin:50% 100%;animation-name:p2f;animation-timing-function:ease-in-out}
+@keyframes p2f{0%,19%{transform:scaleY(0)}40%,58%{transform:scaleY(1)}70%,100%{transform:scaleY(0)}}
+.p2-jig{transform-origin:50px 42px;animation-name:p2j;animation-timing-function:var(--e)}
+@keyframes p2j{0%,52%{transform:none}60%,72%{transform:rotate(118deg)}84%,100%{transform:none}}
+.p2-stream2{opacity:0;animation-name:p2s2;animation-timing-function:linear}
+@keyframes p2s2{0%,58%{opacity:0}60%,70%{opacity:1}72%,100%{opacity:0}}
+.p2-tin{transform-box:fill-box;transform-origin:50% 100%;animation-name:p2t;animation-timing-function:ease-out}
+@keyframes p2t{0%,60%{transform:scaleY(.25)}74%,96%{transform:scaleY(.6)}100%{transform:scaleY(.25)}}
+.syrup .p2-bottle,.syrup .p2-stream1,.syrup .p2-jfill,.syrup .p2-jig,.syrup .p2-stream2,.syrup .p2-tin{animation-duration:4.8s}
+.syrup .p2-stream2{animation-name:p2s2syr}
+@keyframes p2s2syr{0%,59%{opacity:0}62%,74%{opacity:1}77%,100%{opacity:0}}
+/* a measure already poured: only the turn of the wrist */
+.tiponly .p2-bottle,.tiponly .p2-stream1{display:none}
+.tiponly .p2-jfill,.tiponly .p2-jig,.tiponly .p2-stream2,.tiponly .p2-tin{animation-duration:2.6s}
+.tiponly .p2-jfill{animation-name:tipf}
+@keyframes tipf{0%,30%{transform:scaleY(1)}62%,85%{transform:scaleY(0)}100%{transform:scaleY(1)}}
+.tiponly .p2-jig{animation-name:tipj}
+@keyframes tipj{0%,22%{transform:none}38%,62%{transform:rotate(118deg)}80%,100%{transform:none}}
+.tiponly .p2-stream2{animation-name:tips2}
+@keyframes tips2{0%,36%{opacity:0}39%,60%{opacity:1}63%,100%{opacity:0}}
+.tiponly .p2-tin{animation-name:tipt}
+@keyframes tipt{0%,38%{transform:scaleY(.25)}62%,92%{transform:scaleY(.6)}100%{transform:scaleY(.25)}}
+.muddler{animation:mud 1.5s var(--e) infinite}
+@keyframes mud{0%,100%{transform:translateY(-8px)}30%,42%{transform:translateY(8px)}55%{transform:translateY(-4px)}70%,78%{transform:translateY(8px)}}
+.coins{transform-box:fill-box;transform-origin:50% 100%;animation:coin 1.5s var(--e) infinite}
+@keyframes coin{0%,25%,50%,65%,100%{transform:none}32%,42%,72%,78%{transform:scaleY(.55) scaleX(1.08)}}
+/* shake: the joined tins travel a big arc over the shoulder; the ice slams end to end */
+.shaker{transform-origin:48px 50px;animation:arc .44s cubic-bezier(.45,0,.55,1) infinite alternate}
+@keyframes arc{from{transform:translate(-14px,12px) rotate(-10deg)}to{transform:translate(12px,-12px) rotate(8deg)}}
+.slam{animation:slam .44s cubic-bezier(.7,0,.3,1) infinite alternate}
+@keyframes slam{from{transform:translateX(0)}to{transform:translateX(16px)}}
+/* close the tins: ice drops, the small tin comes in upside-down at an angle, a firm tap seals it */
+.seal-ice{animation:sealice 2.8s var(--e) infinite}
+@keyframes sealice{0%{transform:translateY(-40px);opacity:0}10%{opacity:1}28%,100%{transform:none;opacity:1}}
+.seal-tin{transform-origin:33px 24px;animation:sealtin 2.8s var(--e) infinite}
+@keyframes sealtin{0%,30%{transform:translate(30px,-28px) rotate(24deg);opacity:0}38%{opacity:1}62%{transform:translate(0,-3px) rotate(-6deg)}70%,100%{transform:translate(0,0) rotate(-6deg)}}
+.seal-tap{opacity:0;animation:tap 2.8s linear infinite}
+@keyframes tap{0%,66%{opacity:0}70%,78%{opacity:.8}84%,100%{opacity:0}}
+/* stir: the spoon's back runs round the inside wall, behind the ice then in front; the ice turns as one */
+.spoon-f,.spoon-b{animation:stirpath 1.3s linear infinite}
+@keyframes stirpath{0%{transform:translate(-13px,0)}25%{transform:translate(0,3px)}50%{transform:translate(13px,0)}75%{transform:translate(0,-3px)}100%{transform:translate(-13px,0)}}
+.spoon-f{animation-name:stirpath,front}.spoon-b{animation-name:stirpath,back}
+@keyframes front{0%,49.9%{opacity:1}50%,100%{opacity:0}}
+@keyframes back{0%,49.9%{opacity:0}50%,100%{opacity:1}}
+.icespin{transform-origin:48px 54px;animation:icespin 1.3s linear infinite}
+@keyframes icespin{0%{transform:translate(-2px,0) rotate(-4deg)}50%{transform:translate(2px,0) rotate(4deg)}100%{transform:translate(-2px,0) rotate(-4deg)}}
+/* double strain: in to the cone, it pools, one thin stream out; the glass fills */
+.ds-in{animation:flick .22s linear infinite alternate}
+.pool{transform-box:fill-box;transform-origin:50% 100%;animation:pool 1.1s ease-in-out infinite alternate}
+@keyframes pool{from{transform:scaleY(.35)}to{transform:scaleY(.6)}}
+.ds-out{animation:flick .3s linear infinite alternate}
+.rise{transform-box:fill-box;transform-origin:50% 100%;animation:rise2 3.6s var(--e) infinite}
+@keyframes rise2{0%{transform:scaleY(.08)}85%,100%{transform:scaleY(1)}}
+/* strained from the mixing glass: it tips, a thin stream leaves the spout */
+.tilt{transform-origin:34px 30px;animation:tilt 3.6s var(--e) infinite}
+@keyframes tilt{0%{transform:rotate(22deg)}12%,88%{transform:none}100%{transform:rotate(22deg)}}
+.sg-stream{opacity:0;animation:sgs 3.6s linear infinite}
+@keyframes sgs{0%,12%{opacity:0}15%,84%{opacity:1}88%,100%{opacity:0}}
+.dropice{animation:adrop 2.2s cubic-bezier(.55,0,.9,.4) infinite}.dropice.d2{animation-delay:.35s}
+@keyframes adrop{0%{transform:translateY(-44px);opacity:0}12%{opacity:1}45%,90%{transform:none;opacity:1}100%{opacity:0}}
+.ds-stream{animation:flick .25s linear infinite alternate}
+@keyframes flick{to{opacity:.6}}
+.drip{animation:drip .8s ease-in infinite}.dd2{animation-delay:.4s}
+@keyframes drip{from{transform:translateY(0);opacity:1}to{transform:translateY(18px);opacity:0}}
+.ds-fill{transform-box:fill-box;transform-origin:50% 100%;animation:fill 3.2s var(--e) infinite}
+@keyframes fill{0%{transform:scaleY(.1)}80%,100%{transform:scaleY(1)}}
+.layer{transform-box:fill-box;transform-origin:50% 50%;animation:layer 2.8s var(--e) infinite}
+@keyframes layer{0%,15%{transform:scaleX(0)}70%,100%{transform:scaleX(1)}}
+.fl-stream{animation:fls 2.8s linear infinite}
+@keyframes fls{0%,10%{opacity:0}15%,65%{opacity:1}70%,100%{opacity:0}}
+.bub{animation:bub 1.6s ease-out infinite}
+@keyframes bub{from{transform:translateY(0);opacity:0}20%{opacity:.9}to{transform:translateY(-44px);opacity:0}}
+.drop-garn{animation:adrop 2.4s cubic-bezier(.55,0,.9,.4) infinite}
+.peel{transform-box:fill-box;transform-origin:50% 50%;animation:sq 1.4s var(--e) infinite}
+@keyframes sq{0%,100%{transform:none}25%,35%{transform:scaleY(.5)}}
+.mist{animation:mist 1.4s ease-out infinite}
+@keyframes mist{0%,25%{opacity:0;transform:none}35%{opacity:1}100%{opacity:0;transform:translateY(24px)}}
+.steam{animation:stm 2.4s ease-out infinite}
+/* strip cards are placed with transform, so the press goes to the glass */
+.dc .pic{transition:transform .12s var(--e)}.dc:active .pic{transform:translateY(2px) scale(.97)}
+@media (prefers-reduced-motion:reduce){.dc:active .pic{transform:none}}
+/* phone: the chips scroll inside the bubble, the talk field always stays in view */
+@media (max-width:640px){
+ .bubble{display:flex;flex-direction:column}
+ .bubble #say,.bubble .talk{flex:none}
+ .bubble #chips{flex:0 1 auto;min-height:48px;overflow:auto}
+ .thumbs{padding-top:4px}
+ /* at the largest text the step comes first: the moving glyph is left to the thumbnails, the ingredients get a smaller share */
+ :root[data-big] .stepbox .glyph{display:none}
+ :root[data-big] .recipe .rtop{max-height:32%}
+ :root[data-big] .stepbox{min-height:0}
+}
+
+/* A+ and above: the step needs the room, the ingredients keep a capped, scrolling share */
+:root[data-big] .recipe .rtop{flex:0 0 auto;max-height:45%}
+:root[data-big] .stepbox{min-height:0}
+@media (max-width:640px){ :root[data-big] .recipe .rtop{max-height:32%} }
+
+/* sheets: the main buttons stay in view; the content scrolls under them */
+.sheet .row{position:sticky;bottom:-20px;z-index:2;margin:6px -26px -20px;padding:12px 26px 20px;background:linear-gradient(rgba(27,25,28,0),#1b191c 14px)}
+@media (max-width:640px){ .sheet .row{bottom:-14px;margin:6px -16px -14px;padding:12px 16px 14px} }
+
+/* the settings lamp: a small brass oil lamp with a live flame (the drawn lava lamp in index.html is hidden, not removed) */
+#lamp .lift>:not(.oil){display:none}
+#lamp .flame{transform-box:fill-box;transform-origin:50% 100%;animation:flick 2.6s ease-in-out infinite}
+#lamp .halo{animation:haloflick 2.6s ease-in-out infinite}
+@keyframes flick{0%,100%{transform:scale(1,1) skewX(0)}22%{transform:scale(.94,1.06) skewX(-3deg)}48%{transform:scale(1.03,.95) skewX(2deg)}71%{transform:scale(.97,1.04) skewX(-1deg)}}
+@keyframes haloflick{0%,100%{opacity:.55}30%{opacity:.68}60%{opacity:.5}}
